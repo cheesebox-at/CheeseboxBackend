@@ -1,8 +1,8 @@
 using System.Text;
 using Backend.Endpoints;
 using Backend.Middleware;
-using Backend.Models;
 using Backend.Models.Configuration;
+using Backend.Models.Product;
 using Backend.Models.User;
 using Backend.Services;
 using Backend.Services.MongoServices;
@@ -20,13 +20,29 @@ internal class Program
     public static void Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
-        
+
         builder.Configuration.AddJsonFile("config.json", optional: false, reloadOnChange: true);
         builder.Services.Configure<MongoConfigurationModel>(builder.Configuration.GetSection("MongoDb"));
         builder.Services.Configure<SessionConfigurationModel>(builder.Configuration.GetSection("Session"));
 
-        
-        // Authentication verifies that someone is who they say they are.
+        // Lade die Kestrel-Konfiguration
+        // var kestrelOptions = builder.Configuration.GetSection("Kestrel").Get<KestrelOptions>();
+
+        // // Konfiguriere Kestrel für HTTPS
+        // if (kestrelOptions?.Endpoints?.Https != null)
+        // {
+        //     var httpsEndpoint = kestrelOptions.Endpoints.Https;
+
+        //     builder.WebHost.ConfigureKestrel(options =>
+        //     {
+        //         options.ListenAnyIP(8080, listenOptions =>
+        //         {
+        //             listenOptions.UseHttps(httpsEndpoint.Certificate.Path, httpsEndpoint.Certificate.Password);
+        //         });
+        //     });
+        // }
+
+        // Authentication
         builder.Services.AddAuthentication(y =>
             {
                 y.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -46,15 +62,14 @@ internal class Program
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration.GetSection("Session").GetValue<string>("JwtKey")))
                 };
             });
-            
-        //Authorization verifies if they have access permission to what they want to access
+
+        // Authorization
         builder.Services.AddAuthorization();
 
         builder.Services.AddMemoryCache();
         builder.Services.AddLogging();
         builder.Services.AddAntiforgery();
-        
-        // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
+
         if (builder.Services is null)
         {
             Console.WriteLine("builder.Services is null on startup. Can only happen in Main startup method.");
@@ -64,27 +79,26 @@ internal class Program
 
         RegisterMongoServices(builder);
         builder.Services.AddSingleton<MongoService>();
+        builder.Services.AddSingleton<ProductDbService>();
         builder.Services.AddSingleton<UserDbService>();
         builder.Services.AddSingleton<SessionService>();
         builder.Services.AddSingleton<UserService>();
-        
+
         var app = builder.Build();
 
-        // Below is Middleware 
-        
-        
+        // Middleware
         app.UseHttpsRedirection();
 
         app.UseMiddleware<JwtFromCookieMiddleware>();
-        
+
         app.UseAuthentication();
         app.UseAuthorization();
 
-        //todo what does Antiforgery even do??
         app.UseAntiforgery();
-        
+
         var apiGroup = app.MapGroup("/api");
 
+        new ProductEndpoint().Register(apiGroup);
         new SessionEndpoint().Register(apiGroup);
 
         app.Run();
@@ -104,90 +118,100 @@ internal class Program
             var client = x.GetRequiredService<IMongoClient>();
             var config = x.GetRequiredService<IOptions<MongoConfigurationModel>>().Value;
 
-            //client.getdatabse automatically creates db if it doesn't exist.
             return client.GetDatabase(config.DatabaseName);
         });
-        
+
+        RegisterCollectionService<ProductModel>(
+            dbCollectionName: "Products");
+
         RegisterCollectionService<SessionModel>(
             dbCollectionName: "Sessions",
-            additionalIndexes: ["UserId", "RefreshToken"],
-            // expireAfterTouple: (TimeSpan.FromDays(builder.Configuration.GetSection("Session").GetValue<int>("ExpireAfterDays")), nameof(SessionModel.ExpireAfter)));
-            expireAfterTouple: (TimeSpan.FromSeconds(1), nameof(SessionModel.ExpireAt)));
-        
-        RegisterCollectionService<UserModel>(
-            dbCollectionName: "Users", 
-            uniqueIndexName: "Email");
+            additionalIndexes: new[] { "UserId", "RefreshToken" },
+            expireAfterTouple: (TimeSpan.FromDays(builder.Configuration.GetSection("Session").GetValue<int>("ExpireAfterDays")), nameof(SessionModel.ExpireAt)));
 
-        RegisterCollectionService<DataStoreModel>(
-            dbCollectionName: "DataStore");
+        RegisterCollectionService<UserModel>(
+            dbCollectionName: "Users",
+            uniqueIndexName: "Email");
     }
 
-    private static void RegisterCollectionService<T>(string dbCollectionName, string? uniqueIndexName = null, string[]? additionalIndexes = null,  (TimeSpan ExpireAfter, string ExpireIndexName)? expireAfterTouple = null)
+    private static void RegisterCollectionService<T>(string dbCollectionName, string? uniqueIndexName = null, string[]? additionalIndexes = null, (TimeSpan ExpireAfter, string ExpireIndexName)? expireAfterTouple = null)
     {
         _services.AddSingleton(x =>
         {
             var db = x.GetRequiredService<IMongoDatabase>();
-            //db.getcollection automatically creates collections if it doesn't exist
             var collection = db.GetCollection<T>(dbCollectionName);
-            
-            //normal Indexes
+
             if (additionalIndexes is not null)
             {
                 var indexKeys = Builders<T>.IndexKeys;
 
-                List<CreateIndexModel<T>> indexModels = [];
-                
+                var indexModels = new List<CreateIndexModel<T>>();
+
                 foreach (var index in additionalIndexes)
                 {
-                    indexModels.Add(                    
+                    indexModels.Add(
                         new CreateIndexModel<T>(indexKeys.Descending(index), new CreateIndexOptions
                         {
                             Name = index
                         }));
-
                 }
 
                 collection.Indexes.CreateMany(indexModels);
             }
-            
-            //unique Indexes
+
             if (uniqueIndexName is not null)
             {
                 var indexKeys = Builders<T>.IndexKeys;
 
                 CreateIndexModel<T>[] indexModels =
-                [
+                {
                     new CreateIndexModel<T>(indexKeys.Descending(uniqueIndexName), new CreateIndexOptions
                     {
                         Name = uniqueIndexName,
                         Unique = true
                     })
-                ];
+                };
 
                 collection.Indexes.CreateMany(indexModels);
             }
-            
-            //ExpireAfter Index
+
             if (expireAfterTouple is not null)
             {
                 var indexKeys = Builders<T>.IndexKeys;
                 var expireIndexName = expireAfterTouple.Value.ExpireIndexName;
 
                 CreateIndexModel<T>[] indexModels =
-                [
+                {
                     new CreateIndexModel<T>(indexKeys.Descending(expireIndexName), new CreateIndexOptions
                     {
                         Name = expireIndexName,
                         ExpireAfter = expireAfterTouple.Value.ExpireAfter
                     })
-                ];
+                };
 
                 collection.Indexes.CreateMany(indexModels);
             }
 
+            Console.WriteLine($"Registered {dbCollectionName}");
+
             return collection;
         });
-
-        Console.WriteLine($"Registered {dbCollectionName}");
     }
+}
+
+public class EndpointsOptions
+{
+    public HttpsOptions? Https { get; set; }
+}
+
+public class HttpsOptions
+{
+    public string? Url { get; set; }
+    public CertificateOptions? Certificate { get; set; }
+}
+
+public class CertificateOptions
+{
+    public string? Path { get; set; }
+    public string? Password { get; set; }
 }
