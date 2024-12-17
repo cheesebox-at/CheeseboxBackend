@@ -1,0 +1,12 @@
+﻿.vs
+Backend/bin
+Backend/obj
+Backend/appsettings.json
+Backend/config.json
+.idea/.idea.Backend/.idea
+Backend/bin
+Backend/obj
+.idea/.idea.Backend/.idea/workspace.xml
+*.user
+.idea/.idea.CheeseBoxBackend/.idea/workspace.xml
+.idea/.idea.CheeseBox Backend/.idea/workspace.xml
