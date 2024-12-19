@@ -10,7 +10,7 @@ using MongoDB.Driver;
 
 namespace Backend.Services;
 
-public class UserService(UserDbService userDbService, IMongoCollection<DataStoreModel> dataStore)
+public class UserService(UserDbService userDbService)
 {
 
     public async Task<(bool IsSuccess, string Reason)> Register(RegisterDto dto)
@@ -22,21 +22,10 @@ public class UserService(UserDbService userDbService, IMongoCollection<DataStore
 
         if(!ConfirmEmailValidity(dto.Email.Trim(), out status))
             return (false, status);
-
-
-        var filter = Builders<DataStoreModel>.Filter.Eq(x => x.DataStoreType, EDataStore.HighestUserId);
-        var update = Builders<DataStoreModel>.Update.Inc(x => x.Value, 1);
-        var userId = await dataStore.FindOneAndUpdateAsync(filter, update, new FindOneAndUpdateOptions<DataStoreModel>(){IsUpsert = true}); // todo this currently fails on the first register because the userId is null. This should not be the case anymore once the first user is created which should be automatically created as an admin user when it sees there are no users in the db.
-
-        // if (userId == null)
-        // {
-        //     userId = new DataStoreModel { DataStoreType = EDataStore.HighestUserId, Value = 1000 };
-        //     await dataStore.InsertOneAsync(userId); // todo maybe make some validation here if it worked or not
-        // }
+        
         
         var result = await userDbService.CreateNewUser(new UserModel
         {
-            UserId = userId.Value,
             EUserType = EUserType.User,
             EmailVerified = false,
             Email = dto.Email.Trim(),
