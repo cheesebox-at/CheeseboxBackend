@@ -13,6 +13,7 @@ public class UserModel
     public required bool EmailVerified { get; set; }
     public required string Email { get; set; }
     public required string PasswordHash { get; set; }
+    public required string PasswordSalt { get; set; }
     public required string FirstName { get; set; }
     public required string LastName { get; set; }
     public required AddressModel[] AddressData { get; set; } = [];

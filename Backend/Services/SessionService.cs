@@ -8,6 +8,7 @@ using Backend.DTOs;
 using Backend.Models.Configuration;
 using Backend.Models.User;
 using Backend.Services.MongoServices;
+using Microsoft.AspNetCore.Cryptography.KeyDerivation;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using MongoDB.Bson;
@@ -18,7 +19,6 @@ namespace Backend.Services;
 
 public class SessionService(
     IMongoCollection<SessionModel> sessionCollection, 
-    IMongoCollection<UserModel> userCollection,
     IOptions<SessionConfigurationModel> sessionConfiguration, 
     UserDbService userService,
     UserDbService userDbService)
@@ -30,14 +30,37 @@ public class SessionService(
     /// <returns></returns>
     public async Task<bool> VerifyPasswordAsync(LoginDto loginDto)
     {
-        var user = await userDbService.GetUserAsync(loginDto.Email);
-
-        var passwordHash = user.PasswordHash;
-
-        if (passwordHash != loginDto.Password)
+        try
+        {
+            var user = await userDbService.GetUserAsync(loginDto.Email);
+            
+            var dbPassHash = user.PasswordHash;
+            var passHash = HashPassword(loginDto.Password, Convert.FromBase64String(user.PasswordSalt));
+        
+            if (passHash != dbPassHash)
+                return false;
+        }
+        catch (ArgumentNullException ae)
+        {
+            // logger.LogCritical("Invalid password salt length. Salt needs to be 16 bytes.");
             return false;
+        }
+        catch (Exception ex)
+        {
+            return false;
+        }
         
         return true;
+    }
+    
+    public string HashPassword(string password, byte[] salt)
+    {
+        if(salt.Length != 16)
+            throw new ArgumentException("Salt must be 16 bytes");
+        
+        var passwordHash = KeyDerivation.Pbkdf2(password, salt, KeyDerivationPrf.HMACSHA512, 100_000, 32);
+
+        return Convert.ToBase64String(passwordHash);
     }
     
     public async Task<SessionModel> CreateSessionAsync(UserModel user)
