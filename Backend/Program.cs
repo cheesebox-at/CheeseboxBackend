@@ -62,7 +62,7 @@ internal class Program
         }
         _services = builder.Services;
 
-        RegisterMongoServices(builder);
+        RegisterMongoServices();
         builder.Services.AddSingleton<MongoService>();
         builder.Services.AddSingleton<UserDbService>();
         builder.Services.AddSingleton<SessionService>();
@@ -90,7 +90,7 @@ internal class Program
         app.Run();
     }
 
-    private static void RegisterMongoServices(WebApplicationBuilder builder)
+    private static void RegisterMongoServices()
     {
         _services!.AddSingleton<IMongoClient>(x =>
         {
