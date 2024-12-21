@@ -1,9 +1,13 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Serialization;
+using Backend.Middleware.Authorization;
 using Backend.Models;
+using Backend.Models.Permissions;
 using Backend.Models.Product;
 using Backend.Services.MongoServices;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using MongoDB.Bson;
 using MongoDB.Driver;
 
 namespace Backend.Endpoints;
@@ -13,14 +17,17 @@ public class ProductEndpoint
     public void Register(RouteGroupBuilder app)
     {
         var group = app.MapGroup("/product");
-        group.MapPost("/add", async (ProductModel product, ProductDbService db) =>
+        group.MapPost("/add", [Authorize] async (
+            [FromBody]ProductModel product, 
+            ProductDbService productDbService) =>
         {
-            var result = await db.AddProductAsync(product);
+            var result = await productDbService.AddProductAsync(product);
 
             return result is not null ? Results.Ok(result.Id.ToString()) : Results.BadRequest();
-        }).RequireAuthorization();
+        }).WithMetadata(new RequiredPermissionAttribute(CustomPermissions.Products.Create));
 
-        group.MapGet("/getAll", async (ProductDbService db) =>
+        group.MapGet("/getAll", async (
+            ProductDbService productDbService) =>
         {
             var options = new JsonSerializerOptions
             {
@@ -36,7 +43,7 @@ public class ProductEndpoint
                         yield return product;
             }
 
-            var cursor = await db.GetAllProductsAsync();
+            var cursor = await productDbService.GetAllProductsAsync();
 
             return Results.Stream(async responseStream =>
             {
@@ -45,14 +52,37 @@ public class ProductEndpoint
             });
         });
 
-        group.MapGet("/getOne", async (ProductDbService db) =>
+        group.MapGet("/getOne", async (
+            ObjectId productId,
+            ProductDbService productDbService) =>
         {
-            //todo 
+            try
+            {
+                return Results.Ok(await productDbService.GetOneByIdAsync(productId));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(ex.Message);
+            }
         });
 
-        group.MapPost("/modifyOne", async (ProductDbService db) =>
+        group.MapGet("/modifyOne", [Authorize] async (
+            [FromBody] ProductModel product,
+            ObjectId productId,
+            HttpContext context,
+            ILogger<RoleEndpoint> logger,
+            ProductDbService productDbService) =>
         {
-            //todo 
-        });
+            
+            if(productId != product.Id)
+                return Results.BadRequest("roleId and role do not match.");
+        
+            var result = await productDbService.UpdateOneAsync(product);
+
+            if (result.Equals(product))
+                return Results.BadRequest("Failed to update product. Product is still the same as before the update.");
+        
+            return Results.Ok(result);
+        }).WithMetadata(new RequiredPermissionAttribute(CustomPermissions.Products.Edit));
     }
 }
