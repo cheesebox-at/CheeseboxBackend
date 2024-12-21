@@ -23,3 +23,5 @@ They work with the conventional jwt bearer scheme and can be configured in the c
 
 ## Basic API Functionality
 The [Authorize] attribute makes sure that the user has a valid JWT token.
+To further authorize an endpoint with permissions metadata can be added to the EndpointBuilder like this .WithMetadata(new RequiredPermissionAttribute(Permissions.Roles.Create)
+Examples for both can be found in the RoleEndpoint.cs
