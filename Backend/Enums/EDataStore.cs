@@ -2,5 +2,6 @@
 
 public enum EDataStore
 {
-    HighestUserId
+    HighestUserId,
+    HighestRoleId
 }

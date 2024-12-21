@@ -65,6 +65,7 @@ internal class Program
         RegisterMongoServices();
         builder.Services.AddSingleton<MongoService>();
         builder.Services.AddSingleton<UserDbService>();
+        builder.Services.AddSingleton<RoleDbService>();
         builder.Services.AddSingleton<SessionService>();
         builder.Services.AddSingleton<UserService>();
         
@@ -86,6 +87,7 @@ internal class Program
         var apiGroup = app.MapGroup("/api");
 
         new SessionEndpoint().Register(apiGroup);
+        new RoleEndpoint().Register(apiGroup);
 
         app.Run();
     }
@@ -118,6 +120,9 @@ internal class Program
             dbCollectionName: "Users", 
             uniqueIndexName: "Email");
 
+        RegisterCollectionService<RoleModel>(
+            dbCollectionName: "Roles");
+        
         RegisterCollectionService<DataStoreModel>(
             dbCollectionName: "DataStore");
     }
