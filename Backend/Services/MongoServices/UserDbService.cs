@@ -13,11 +13,12 @@ namespace Backend.Services.MongoServices;
 
 public class UserDbService(
     IMongoClient mongoClient, 
-    IMongoCollection<UserModel> userCollection, 
+    IMongoCollection<UserModel> userCollection,
     IMongoCollection<DataStoreModel> dataStore,
+    RoleDbService roleDbService,
     ILogger<UserDbService> logger)
 {
-    public async Task<(bool IsSuccess, string Reason)> CreateNewUser(UserModel user)
+    public async Task<(bool IsSuccess, string Reason)> CreateNewUserAsync(UserModel user)
     {
         var result = (false, "Not defined");
         
@@ -29,34 +30,58 @@ public class UserDbService(
             {
                 var userIdFilter = Builders<DataStoreModel>.Filter.Eq(x => x.DataStoreType, EDataStore.HighestUserId);
                 var userIdUpdate = Builders<DataStoreModel>.Update.Inc(x => x.Value, 1);
-                var userId = await dataStore.FindOneAndUpdateAsync(handle, userIdFilter, userIdUpdate, new FindOneAndUpdateOptions<DataStoreModel>(){IsUpsert = true}, token);
+                var userId = await dataStore.FindOneAndUpdateAsync(handle, userIdFilter, userIdUpdate,
+                    new FindOneAndUpdateOptions<DataStoreModel>() { IsUpsert = true }, token);
 
                 if (userId is null)
                 {
                     user.UserId = 0;
                     user.EUserType = EUserType.SysAdmin;
+                    user.RolesIds = [0];
+
+                    try
+                    {
+                        var sysAdminRole = roleDbService.GetRoleByIdAsync(0);
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        try
+                        {
+                            await roleDbService.CreateRoleAsync(new RoleModel());
+                        }
+                        catch (Exception e)
+                        {
+                            logger.LogCritical(e,
+                                "Failed automatically creating SysAdmin role while creating SysAdmin User.");
+                            throw new ApplicationException("Error creating role", e);
+                        }
+                    }
                 }
                 else
                 {
                     user.UserId = userId.Value;
                 }
-                
+
                 var filter = Builders<UserModel>.Filter.Eq(x => x.Email, user.Email);
 
                 var existingCount = await userCollection.CountDocumentsAsync(handle, filter, cancellationToken: token);
                 if (existingCount != 0)
                     throw new InvalidOperationException($"A user with the email '{user.Email}' already exists.");
-        
+
                 await userCollection.InsertOneAsync(handle, user, cancellationToken: token);
                 logger.LogInformation("Created new user. UserId: {userId} email {email}.", user.UserId, user.Email);
                 return Task.CompletedTask;
             });
         }
-        catch(InvalidOperationException ex)
+        catch (InvalidOperationException ex)
         {
             logger.LogInformation("Tried to create user with already existing email: {email}", user.Email);
             return (false, ex.Message);
             await session.AbortTransactionAsync();
+        }
+        catch (ApplicationException ex)
+        {
+            logger.LogCritical(ex, "Aborted SysAdmin account creation. Failed to create SysAdmin. The first user and role created are always SysAdmin.");
         }
         catch (Exception ex)
         {

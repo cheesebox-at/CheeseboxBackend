@@ -10,6 +10,7 @@ public class UserModel
     [BsonId]
     public long UserId { get; set; }
     public required EUserType EUserType { get; set; }
+    public long[] RolesIds { get; set; } = [];
     public required bool EmailVerified { get; set; }
     public required string Email { get; set; }
     public required string PasswordHash { get; set; }

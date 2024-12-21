@@ -31,7 +31,7 @@ public class UserService(UserDbService userDbService, SessionService sessionServ
         
         var passHash = sessionService.HashPassword(dto.Password, salt);
         
-        var result = await userDbService.CreateNewUser(new UserModel
+        var result = await userDbService.CreateNewUserAsync(new UserModel
         {
             EUserType = EUserType.User,
             EmailVerified = false,
@@ -43,13 +43,10 @@ public class UserService(UserDbService userDbService, SessionService sessionServ
             AddressData = (dto.AddressData ?? [])! // Suppress warning because the code actually works, the warning is wrong.
         });
 
-        if(!result.IsSuccess)
-            return (false, result.Reason);
-        
-        return (true, "Success");
+        return (result.IsSuccess, result.Reason);
     }
     
-    private bool ConfirmPasswordPolicy(string password, string? confirmPassword, out string statusMessage)
+    private static bool ConfirmPasswordPolicy(string password, string? confirmPassword, out string statusMessage)
     {
         statusMessage = "Password valid";
 
@@ -62,7 +59,7 @@ public class UserService(UserDbService userDbService, SessionService sessionServ
         return true;
     }
 
-    private bool ConfirmEmailPolicy(string email, out string statusMessage)
+    private static bool ConfirmEmailPolicy(string email, out string statusMessage)
     {
         statusMessage = "Email valid";
 
