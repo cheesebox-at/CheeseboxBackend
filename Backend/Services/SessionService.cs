@@ -138,23 +138,36 @@ public class SessionService(
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Jti, ObjectId.GenerateNewId().ToString()),
-            new(JwtRegisteredClaimNames.Sub, user.Email),
+            new(JwtRegisteredClaimNames.Sub, user.UserId.ToString()),
             new("userId", user.UserId.ToString()),
             new("sessionId", session.Id.ToString()),
-            new(ClaimTypes.NameIdentifier, user.Email),
-            new(ClaimTypes.Role, "Admin"),
+            new(ClaimTypes.NameIdentifier, user.Email)
         };
 
-        var tokenDescriptor = new SecurityTokenDescriptor
+        foreach (var role in user.RolesIds)
         {
-            Subject = new ClaimsIdentity(claims),
-            Expires = DateTime.UtcNow.AddMinutes(sessionConfiguration.Value.JwtExpireAfterMinutes),
-            Issuer = sessionConfiguration.Value.JwtIssuer,
-            Audience = sessionConfiguration.Value.JwtAudience,
-            SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
-        };
+            claims.Add(new Claim(ClaimTypes.Role, role.ToString()));
+        }
+
+        // var tokenDescriptor = new SecurityTokenDescriptor
+        // {
+        //     Subject = new ClaimsIdentity(claims),
+        //     Expires = DateTime.UtcNow.AddMinutes(sessionConfiguration.Value.JwtExpireAfterMinutes),
+        //     Issuer = sessionConfiguration.Value.JwtIssuer,
+        //     Audience = sessionConfiguration.Value.JwtAudience,
+        //     SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+        // };
+
+        var token = new JwtSecurityToken
+        (
+            issuer: sessionConfiguration.Value.JwtIssuer,
+            audience: sessionConfiguration.Value.JwtAudience,
+            claims: claims,
+            expires: DateTime.UtcNow.AddMinutes(sessionConfiguration.Value.JwtExpireAfterMinutes),
+            signingCredentials: new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+        );
         
-        var token = tokenHandler.CreateToken(tokenDescriptor);
+        // var token = tokenHandler.CreateToken(tokenDescriptor);
         var jwtToken = tokenHandler.WriteToken(token);
         return jwtToken;
     }

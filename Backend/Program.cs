@@ -1,6 +1,7 @@
 using System.Text;
 using Backend.Endpoints;
 using Backend.Middleware;
+using Backend.Middleware.Authorization;
 using Backend.Models;
 using Backend.Models.Configuration;
 using Backend.Models.User;
@@ -76,11 +77,14 @@ internal class Program
         
         app.UseHttpsRedirection();
 
+        //populates jwt(auth) cookie into auth header so that it can be used by other auth middleware
         app.UseMiddleware<JwtFromCookieMiddleware>();
         
         app.UseAuthentication();
         app.UseAuthorization();
 
+        app.UseMiddleware<PermissionMiddleware>();
+        
         //todo what does Antiforgery even do??
         app.UseAntiforgery();
         
