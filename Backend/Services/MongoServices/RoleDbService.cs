@@ -1,5 +1,6 @@
 ﻿using Backend.Enums;
 using Backend.Models;
+using Backend.Models.Permissions;
 using Backend.Models.User;
 using MongoDB.Driver;
 
@@ -56,7 +57,7 @@ public class RoleDbService(
     /// </summary>
     /// <param name="id"></param>
     /// <returns></returns>
-    public async Task<RoleModel?> GetRoleByIdAsync(long id)
+    public async Task<RoleModel> GetRoleByIdAsync(long id)
     {
         var filter = Builders<RoleModel>.Filter.Eq(x => x.Id, id);
 

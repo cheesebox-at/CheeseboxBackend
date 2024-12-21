@@ -1,6 +1,9 @@
 ﻿using Backend.DTOs;
+using Backend.Middleware.Authorization;
+using Backend.Models.Permissions;
 using Backend.Models.User;
 using Backend.Services.MongoServices;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Backend.Endpoints;
@@ -11,7 +14,7 @@ public class RoleEndpoint
     {
         var group = app.MapGroup("/roles");
 
-        group.MapPost("/create", async (
+        group.MapPost("/create", [Authorize] async (
             string? roleName,
             HttpContext context,
             ILogger<RoleEndpoint> logger,
@@ -36,8 +39,9 @@ public class RoleEndpoint
                 logger.LogError(ex, "Failed creating role:{roleName}", roleName);
                 return Results.InternalServerError();
             }
-        });
-        group.MapGet("/get", async (
+        }).WithMetadata(new RequiredPermissionAttribute(Permissions.Roles.Create));
+        
+        group.MapGet("/get", [Authorize] async (
             long roleId,
             HttpContext context,
             ILogger<RoleEndpoint> logger,
@@ -51,8 +55,8 @@ public class RoleEndpoint
             {
                 return Results.BadRequest(ex.Message);
             }
-        });
-        group.MapPost("/delete", async (
+        }).WithMetadata(new RequiredPermissionAttribute(Permissions.Roles.View));
+        group.MapPost("/delete",[Authorize] async (
             long roleId,
             HttpContext context,
             ILogger<RoleEndpoint> logger,
@@ -71,8 +75,8 @@ public class RoleEndpoint
             {
                 return Results.BadRequest(ex.Message);
             }
-        });
-        group.MapPost("/modify", async (
+        }).WithMetadata(new RequiredPermissionAttribute(Permissions.Roles.Delete));
+        group.MapPost("/modify", [Authorize] async (
             [FromBody] RoleModel role,
             long roleId,
             HttpContext context,
@@ -91,6 +95,6 @@ public class RoleEndpoint
                 return Results.BadRequest("Failed to update role. Role is still the same as before the update.");
             
             return Results.Ok(result);
-        });
+        }).WithMetadata(new RequiredPermissionAttribute(Permissions.Roles.Edit));
     }
 }
