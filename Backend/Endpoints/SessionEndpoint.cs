@@ -54,7 +54,7 @@ public class SessionEndpoint
 
             var session = await sessionService.CreateSessionAsync(user);
             
-            var jwt = await sessionService.GenerateJwtTokenAsync(session.Id);
+            var jwt = await sessionService.GenerateJwtTokenAsync(session.RefreshToken);
 
             if (jwt is null)
             {
@@ -75,68 +75,68 @@ public class SessionEndpoint
                 Expires = DateTime.UtcNow + TimeSpan.FromDays(sessionConfiguration.Value.ExpireAfterDays),
                 HttpOnly = true,
                 Secure = true,
-                Path = "/api/session/refresh",
+                Path = "/api",
             };
             context.Response.Cookies.Append("refresh", session.RefreshToken, refreshCookieOptions);
             
             return Results.Ok();
         }).DisableAntiforgery(); //todo check if disabling antiforgery is appropriate here
 
-        group.MapPost("/refresh", async (
-            [FromForm] ObjectId sessionId,
-            IOptions<SessionConfigurationModel> sessionConfiguration,
-            HttpContext context,
-            SessionService sessionService
-            ) =>
-        {
-            if (!context.Request.Cookies.TryGetValue("refresh", out var refreshToken))
-            {
-                return Results.Unauthorized();
-            }
-
-            var refreshTokenValid = await sessionService.ValidateRefreshTokenAsync(refreshToken, sessionId);
-
-            if (!refreshTokenValid)
-            {
-                context.Response.Cookies.Delete("refresh"); //todo this doesn't seem to delete the cookie, at least not in postman
-                return Results.Unauthorized();
-            }
-
-            string newRefreshToken;
-            
-            try
-            {
-                newRefreshToken = await sessionService.UpdateRefreshTokenAsync(sessionId);
-            }
-            catch
-            {
-                return Results.InternalServerError("Failed to generate new refresh token.");
-            }
-            
-            var refreshCookieOptions = new CookieOptions
-            {
-                Expires = DateTime.UtcNow + TimeSpan.FromDays(sessionConfiguration.Value.ExpireAfterDays),
-                HttpOnly = true,
-                Secure = true,
-                Path = "/api/session/refresh",
-            };
-            context.Response.Cookies.Append("refresh", newRefreshToken, refreshCookieOptions);
-            
-            var jwt = await sessionService.GenerateJwtTokenAsync(sessionId);
-            if (jwt is null)
-                return Results.InternalServerError("Failed generating jwt.");
-            
-            var jwtCookieOptions = new CookieOptions
-            {
-                Expires = DateTime.UtcNow + TimeSpan.FromMinutes(sessionConfiguration.Value.JwtExpireAfterMinutes),
-                HttpOnly = true,
-                Secure = true,
-                IsEssential = true // todo this can maybe be removed
-            };
-            context.Response.Cookies.Append("auth", jwt, jwtCookieOptions);
-            
-            return Results.Ok();
-        }).DisableAntiforgery(); //todo check if disabling antiforgery is appropriate here
+        // group.MapPost("/refresh", async (
+        //     [FromForm] ObjectId sessionId,
+        //     IOptions<SessionConfigurationModel> sessionConfiguration,
+        //     HttpContext context,
+        //     SessionService sessionService
+        //     ) =>
+        // {
+        //     if (!context.Request.Cookies.TryGetValue("refresh", out var refreshToken))
+        //     {
+        //         return Results.Unauthorized();
+        //     }
+        //
+        //     var refreshTokenValid = await sessionService.ValidateRefreshTokenAsync(refreshToken, sessionId);
+        //
+        //     if (!refreshTokenValid)
+        //     {
+        //         context.Response.Cookies.Delete("refresh"); //todo this doesn't seem to delete the cookie, at least not in postman
+        //         return Results.Unauthorized();
+        //     }
+        //
+        //     string newRefreshToken;
+        //     
+        //     try
+        //     {
+        //         newRefreshToken = await sessionService.UpdateRefreshTokenAsync(sessionId);
+        //     }
+        //     catch
+        //     {
+        //         return Results.InternalServerError("Failed to generate new refresh token.");
+        //     }
+        //     
+        //     var refreshCookieOptions = new CookieOptions
+        //     {
+        //         Expires = DateTime.UtcNow + TimeSpan.FromDays(sessionConfiguration.Value.ExpireAfterDays),
+        //         HttpOnly = true,
+        //         Secure = true,
+        //         Path = "/api",
+        //     };
+        //     context.Response.Cookies.Append("refresh", newRefreshToken, refreshCookieOptions);
+        //     
+        //     var jwt = await sessionService.GenerateJwtTokenAsync(sessionId);
+        //     if (jwt is null)
+        //         return Results.InternalServerError("Failed generating jwt.");
+        //     
+        //     var jwtCookieOptions = new CookieOptions
+        //     {
+        //         Expires = DateTime.UtcNow + TimeSpan.FromMinutes(sessionConfiguration.Value.JwtExpireAfterMinutes),
+        //         HttpOnly = true,
+        //         Secure = true,
+        //         IsEssential = true // todo this can maybe be removed
+        //     };
+        //     context.Response.Cookies.Append("auth", jwt, jwtCookieOptions);
+        //     
+        //     return Results.Ok();
+        // }).DisableAntiforgery(); //todo check if disabling antiforgery is appropriate here
         
         group.MapPost("/register", async (
             [FromForm] RegisterDto registerDto,

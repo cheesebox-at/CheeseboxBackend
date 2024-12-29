@@ -1,11 +1,19 @@
 ﻿using System.Security.Claims;
+using Backend.Models.Configuration;
 using Backend.Models.User;
+using Backend.Services;
 using Backend.Services.MongoServices;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Options;
 
 namespace Backend.Middleware.Authorization;
 
-public class PermissionMiddleware(RequestDelegate next, RoleDbService roleDbService, ILogger<PermissionMiddleware> logger)
+public class PermissionMiddleware(
+    RequestDelegate next, 
+    RoleDbService roleDbService, 
+    ILogger<PermissionMiddleware> logger, 
+    SessionService sessionService, 
+    IOptions<SessionConfigurationModel> sessionConfiguration)
 {
     public async Task InvokeAsync(HttpContext context)
     {
@@ -20,11 +28,20 @@ public class PermissionMiddleware(RequestDelegate next, RoleDbService roleDbServ
         }
         
         // Ensure the user is authenticated (handled by default JWT middleware)
-        if (!context.User.Identity.IsAuthenticated) //todo check if this warning is valid or not.
+        if (context.User.Identity is { IsAuthenticated: false})
         {
-            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            await context.Response.WriteAsync("Unauthorized");
-            return;
+            //if use is not authenticaed check if a valid refresh token is present and create a new pair.
+            var newJwt = await TryRefreshTokens(context);
+            
+            if (newJwt is null)
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsync("Unauthorized");
+                return;
+            }
+            
+            //this sets the claimsprincipal user which is usually done and authenticated by the authentication middleware. We don't need to authenticate here becase we create the jwt here as well.
+            context.User = sessionService.GetClaimsPrincipalFromJwtAsync(newJwt);
         }
 
         // This checks if there is no custom permission attribute set on the requested endpoint.
@@ -47,7 +64,7 @@ public class PermissionMiddleware(RequestDelegate next, RoleDbService roleDbServ
             return;
         }
         
-        if (!roleIds.Any())
+        if (roleIds.Count == 0)
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             await context.Response.WriteAsync("Forbidden: No roles assigned.");
@@ -67,7 +84,7 @@ public class PermissionMiddleware(RequestDelegate next, RoleDbService roleDbServ
             
             try
             {
-                role = await roleDbService.GetRoleByIdAsync(roleId);
+                role = await roleDbService.GetOneByIdAsync(roleId);
             }
             catch (Exception ex)
             {
@@ -89,6 +106,54 @@ public class PermissionMiddleware(RequestDelegate next, RoleDbService roleDbServ
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
         await context.Response.WriteAsync($"Forbidden: Missing permission '{permissionAttribute.Permission}'.");
         return;
+    }
+
+    private async Task<string?> TryRefreshTokens(HttpContext context)
+    {
+        if (!context.Request.Cookies.TryGetValue("refresh", out var refreshToken))
+            return null;
+
+        var refreshTokenValid = await sessionService.ValidateRefreshTokenAsync(refreshToken);
+
+        if (!refreshTokenValid)
+        {
+            context.Response.Cookies.Delete("refresh"); //todo this doesn't seem to delete the cookie, at least not in postman
+            return null;
+        }
+
+        string newRefreshToken;
+        
+        var jwt = await sessionService.GenerateJwtTokenAsync(refreshToken);
+        if (jwt is null)
+            return null;
+            
+        try
+        {
+            newRefreshToken = await sessionService.UpdateRefreshTokenAsync(refreshToken);
+        }
+        catch
+        {
+            return null;
+        }
+            
+        var refreshCookieOptions = new CookieOptions
+        {
+            Expires = DateTime.UtcNow + TimeSpan.FromDays(sessionConfiguration.Value.ExpireAfterDays),
+            HttpOnly = true,
+            Secure = true,
+            Path = "/api",
+        };
+        context.Response.Cookies.Append("refresh", newRefreshToken, refreshCookieOptions);
+        
+        var jwtCookieOptions = new CookieOptions
+        {
+            Expires = DateTime.UtcNow + TimeSpan.FromMinutes(sessionConfiguration.Value.JwtExpireAfterMinutes),
+            HttpOnly = true,
+            Secure = true,
+            IsEssential = true // todo this can maybe be removed
+        };
+        context.Response.Cookies.Append("auth", jwt, jwtCookieOptions);
+        return jwt;
     }
 }
 
