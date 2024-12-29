@@ -74,16 +74,16 @@ internal class Program
 
         // Below is Middleware 
         
-        
         app.UseHttpsRedirection();
-
+        
         //populates jwt(auth) cookie into auth header so that it can be used by other auth middleware
         app.UseMiddleware<JwtFromCookieMiddleware>();
         
         app.UseAuthentication();
-        app.UseAuthorization();
-
+        
         app.UseMiddleware<PermissionMiddleware>();
+        
+        app.UseAuthorization();
         
         //todo what does Antiforgery even do??
         app.UseAntiforgery();
@@ -92,6 +92,7 @@ internal class Program
 
         new SessionEndpoint().Register(apiGroup);
         new RoleEndpoint().Register(apiGroup);
+        new UserEndpoint().Register(apiGroup);
 
         app.Run();
     }

@@ -18,7 +18,7 @@ public class UserDbService(
     RoleDbService roleDbService,
     ILogger<UserDbService> logger)
 {
-    public async Task<(bool IsSuccess, string Reason)> CreateNewUserAsync(UserModel user)
+    public async Task<(bool IsSuccess, string Reason)> CreateOneAsync(UserModel user)
     {
         var result = (false, "Not defined");
         
@@ -41,13 +41,13 @@ public class UserDbService(
 
                     try
                     {
-                        var sysAdminRole = roleDbService.GetRoleByIdAsync(0);
+                        var sysAdminRole = roleDbService.GetOneByIdAsync(0);
                     }
                     catch (InvalidOperationException ex)
                     {
                         try
                         {
-                            await roleDbService.CreateRoleAsync(new RoleModel());
+                            await roleDbService.CreateOneAsync(new RoleModel());
                         }
                         catch (Exception e)
                         {
@@ -92,11 +92,51 @@ public class UserDbService(
         return (true, user.UserId.ToString());
     }
     
-    public async Task Login(string username, string password)
+    /// <summary>
+    /// Assigns roles to user by id. If the user already has the role it does not add duplicates.
+    /// </summary>
+    /// <param name="userId"></param>
+    /// <param name="roleIds"></param>
+    /// <returns>Returns true if the user was found and mongodb executed the call. Even if the user already had the role.</returns>
+    public async Task<bool> AssignRoles(long userId, long[] roleIds)
     {
+        var filter = Builders<UserModel>.Filter.Eq(user => user.UserId, userId);
+        var update = Builders<UserModel>.Update.AddToSetEach(x => x.RolesIds, roleIds);
+        
+        var result = await userCollection.UpdateManyAsync(filter, update);
+
+        return result.MatchedCount > 0;
     }
+    /// <summary>
+    /// Removes roles from the user by id.
+    /// </summary>
+    /// <param name="userId"></param>
+    /// <param name="roleIds"></param>
+    /// <returns>Returns true if the user was found and mongodb executed the call. Even if the user didn't have the role.</returns>
+    public async Task<bool> RemoveRoles(long userId, long[] roleIds)
+    {
+        var filter = Builders<UserModel>.Filter.Eq(user => user.UserId, userId);
+        var update = Builders<UserModel>.Update.PullAll(x => x.RolesIds, roleIds);
+        
+        var result = await userCollection.UpdateManyAsync(filter, update);
 
-
+        return result.MatchedCount > 0;
+    }
+    /// <summary>
+    /// Removes a role from all users based on the roleId.
+    /// </summary>
+    /// <param name="roleIdToRemove"></param>
+    /// <returns>Returns the amount of users the role was removed from.</returns>
+    public async Task<long> RemoveRoleFromAllUsersAsync(long roleIdToRemove)
+    {
+        var filter = Builders<UserModel>.Filter.AnyEq(user => user.RolesIds, roleIdToRemove);
+        var update = Builders<UserModel>.Update.PullFilter(user => user.RolesIds, roleId => roleId == roleIdToRemove);
+        
+        var result = await userCollection.UpdateManyAsync(filter, update);
+        
+        return result.ModifiedCount;
+    }
+    
     /// <summary>
     /// Throws Exception if more than one user is found in db.
     /// </summary>

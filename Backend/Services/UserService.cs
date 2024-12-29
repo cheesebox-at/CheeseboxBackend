@@ -9,6 +9,7 @@ using Backend.Services.MongoServices;
 using Backend.Models.Identity;
 using Microsoft.AspNetCore.Cryptography.KeyDerivation;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.JSInterop.Infrastructure;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 
@@ -31,10 +32,40 @@ public class UserService(UserDbService userDbService, SessionService sessionServ
         
         var passHash = sessionService.HashPassword(dto.Password, salt);
         
-        var result = await userDbService.CreateNewUserAsync(new UserModel
+        var result = await userDbService.CreateOneAsync(new UserModel
         {
             EUserType = EUserType.User,
             EmailVerified = false,
+            Email = dto.Email.Trim(),
+            PasswordHash = passHash,
+            PasswordSalt = Convert.ToBase64String(salt),
+            FirstName = dto.FirstName,
+            LastName = dto.LastName,
+            AddressData = (dto.AddressData ?? [])! // Suppress warning because the code actually works, the warning is wrong.
+        });
+
+        return (result.IsSuccess, result.Reason);
+    }
+    /// <summary>
+    /// This creates a user manually, there are no verifications whether data is entered according to policy.
+    /// This method can also be used to create bot accounts.
+    /// </summary>
+    /// <param name="dto"></param>
+    /// <returns></returns>
+    public async Task<(bool IsSuccess, string Reason)> Create(CreateUserDto dto)
+    {
+        var status = "Success";
+
+        var salt = new byte[16];
+        RandomNumberGenerator.Create().GetBytes(salt);
+        
+        var passHash = sessionService.HashPassword(dto.Password, salt);
+        
+        var result = await userDbService.CreateOneAsync(new UserModel
+        {
+            EUserType = dto.EUserType,
+            EmailVerified = dto.EmailVerified,
+            RolesIds = dto.RolesIds,
             Email = dto.Email.Trim(),
             PasswordHash = passHash,
             PasswordSalt = Convert.ToBase64String(salt),
