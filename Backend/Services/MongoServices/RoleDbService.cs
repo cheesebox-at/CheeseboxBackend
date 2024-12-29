@@ -12,7 +12,7 @@ public class RoleDbService(
     IMongoClient mongoClient,
     ILogger<RoleDbService> logger)
 {
-    public async Task<(bool IsSuccess, string Reason)> CreateRoleAsync(RoleModel role)
+    public async Task<(bool IsSuccess, string Reason)> CreateOneAsync(RoleModel role)
     {
 
         var result = (false, "Not defined");
@@ -57,7 +57,7 @@ public class RoleDbService(
     /// </summary>
     /// <param name="id"></param>
     /// <returns></returns>
-    public async Task<RoleModel> GetRoleByIdAsync(long id)
+    public async Task<RoleModel> GetOneByIdAsync(long id)
     {
         var filter = Builders<RoleModel>.Filter.Eq(x => x.Id, id);
 
@@ -70,8 +70,8 @@ public class RoleDbService(
     /// Deletes all roles with the specified id.
     /// </summary>
     /// <param name="id"></param>
-    /// <returns>True if one or more roles have been delted. False if no roles were deleted.</returns>
-    public async Task<bool> DeleteRoleByIdAsync(long id)
+    /// <returns>True if one or more roles have been deleted. False if no roles were deleted.</returns>
+    public async Task<bool> DeleteOneByIdAsync(long id)
     {
         var filter = Builders<RoleModel>.Filter.Eq(x => x.Id, id);
         var result = await roleCollection.DeleteManyAsync(filter);
