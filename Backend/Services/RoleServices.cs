@@ -12,7 +12,7 @@ public class RoleServices(RoleDbService roleDbService, ILogger<RoleServices> log
         if(ConfirmRoleNamePolicy(role.Name, out status))
             return (false, status);
         
-        var result = await roleDbService.CreateRoleAsync(role);
+        var result = await roleDbService.CreateOneAsync(role);
         
         return (result.IsSuccess, result.Reason);
     }

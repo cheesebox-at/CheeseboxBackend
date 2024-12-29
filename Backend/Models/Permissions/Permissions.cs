@@ -13,6 +13,7 @@ public class Permissions
         public const string Delete = "Permissions.Users.Delete";
         public const string Edit = "Permissions.Users.Edit";
         public const string View = "Permissions.Users.View";
+        public const string ManageRoles = "Permissions.Users.ManageRoles";
     }
     public class Roles
     {

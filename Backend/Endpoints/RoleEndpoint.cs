@@ -20,7 +20,9 @@ public class RoleEndpoint
             ILogger<RoleEndpoint> logger,
             RoleDbService roleDbService) =>
         {
-
+            
+            
+            
             var role = new RoleModel
             {
                 Name = roleName ?? "Not defined"
@@ -28,7 +30,7 @@ public class RoleEndpoint
 
             try
             {
-                var result = await roleDbService.CreateRoleAsync(role);
+                var result = await roleDbService.CreateOneAsync(role);
                 if (result.IsSuccess)
                     return Results.Ok(result.Reason);
 
@@ -49,13 +51,14 @@ public class RoleEndpoint
         {
             try
             {
-                return Results.Ok(await roleDbService.GetRoleByIdAsync(roleId));
+                return Results.Ok(await roleDbService.GetOneByIdAsync(roleId));
             }
             catch (InvalidOperationException ex)
             {
                 return Results.BadRequest(ex.Message);
             }
         }).WithMetadata(new RequiredPermissionAttribute(Permissions.Roles.View));
+        
         group.MapPost("/delete",[Authorize] async (
             long roleId,
             HttpContext context,
@@ -69,13 +72,16 @@ public class RoleEndpoint
             }
             try
             {
-                return Results.Ok(await roleDbService.DeleteRoleByIdAsync(roleId));
+                await roleDbService.DeleteOneByIdAsync(roleId);
+                
+                return Results.Ok();
             }
             catch (InvalidOperationException ex)
             {
                 return Results.BadRequest(ex.Message);
             }
         }).WithMetadata(new RequiredPermissionAttribute(Permissions.Roles.Delete));
+
         group.MapPost("/modify", [Authorize] async (
             [FromBody] RoleModel role,
             long roleId,

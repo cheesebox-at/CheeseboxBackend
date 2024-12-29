@@ -83,13 +83,13 @@ public class SessionService(
     /// </summary>
     /// <param name="sessionId"></param>
     /// <returns></returns>
-    public async Task<string> UpdateRefreshTokenAsync(ObjectId sessionId)
+    public async Task<string> UpdateRefreshTokenAsync(string refreshToken)
     {
         //todo add datetime to sessionmodel so that it can only be updated and checked every set amount of time.
         //todo add useragent to ensure the session is only used on the client it was started.
         var newRefreshToken = GenerateRefreshToken();
         
-        var filter = Builders<SessionModel>.Filter.Eq(s => s.Id, sessionId);
+        var filter = Builders<SessionModel>.Filter.Eq(s => s.RefreshToken, refreshToken);
         var update = Builders<SessionModel>.Update.Set(x => x.RefreshToken, newRefreshToken);
         
         var result = await sessionCollection.UpdateOneAsync(filter, update);
@@ -97,13 +97,12 @@ public class SessionService(
         if (result.ModifiedCount == 1)
             return newRefreshToken;
 
-        throw new Exception();
+        throw new Exception("Failed to update refresh token");
     }    
     private string GenerateRefreshToken()
     {
         var randomNumber = new byte[32];
-        using (var rng = RandomNumberGenerator.Create())
-            rng.GetBytes(randomNumber);
+        RandomNumberGenerator.Fill(randomNumber);
         var timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
         
         return $"{Convert.ToBase64String(randomNumber)}.{timestamp}";
@@ -113,22 +112,18 @@ public class SessionService(
     /// Will throw an exception if more than one session is found
     /// </summary>
     /// <param name="refreshToken"></param>
-    /// <param name="sessionId"></param>
     /// <returns></returns>
-    public async Task<bool> ValidateRefreshTokenAsync(string refreshToken, ObjectId sessionId)
+    public async Task<bool> ValidateRefreshTokenAsync(string refreshToken)
     {
         var filter = Builders<SessionModel>.Filter.Eq(s => s.RefreshToken, refreshToken);
         var result = await (await sessionCollection.FindAsync(filter)).SingleAsync();
         
-        if(result.Id == sessionId && result.ExpireAt > DateTime.UtcNow)
-            return true;
-
-        return false;
+        return result.ExpireAt > DateTime.UtcNow;
     }
-    public async Task<string?> GenerateJwtTokenAsync(ObjectId sessionId)
+    public async Task<string?> GenerateJwtTokenAsync(string refreshToken)
     {
         
-        var session = await GetSessionAsync(sessionId);
+        var session = await GetSessionAsync(refreshToken);
         
         var user = await userService.GetUserAsync(session.UserId);
         
@@ -149,15 +144,6 @@ public class SessionService(
             claims.Add(new Claim(ClaimTypes.Role, role.ToString()));
         }
 
-        // var tokenDescriptor = new SecurityTokenDescriptor
-        // {
-        //     Subject = new ClaimsIdentity(claims),
-        //     Expires = DateTime.UtcNow.AddMinutes(sessionConfiguration.Value.JwtExpireAfterMinutes),
-        //     Issuer = sessionConfiguration.Value.JwtIssuer,
-        //     Audience = sessionConfiguration.Value.JwtAudience,
-        //     SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
-        // };
-
         var token = new JwtSecurityToken
         (
             issuer: sessionConfiguration.Value.JwtIssuer,
@@ -167,18 +153,37 @@ public class SessionService(
             signingCredentials: new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
         );
         
-        // var token = tokenHandler.CreateToken(tokenDescriptor);
         var jwtToken = tokenHandler.WriteToken(token);
+        
         return jwtToken;
     }
+
+    public ClaimsPrincipal GetClaimsPrincipalFromJwtAsync(string token)
+    {
+        var tokenHandler = new JwtSecurityTokenHandler();
+        
+        var tokenValidation = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = sessionConfiguration.Value.JwtIssuer,
+            ValidAudience = sessionConfiguration.Value.JwtAudience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(sessionConfiguration.Value.JwtKey))
+        };
+        
+        return tokenHandler.ValidateToken(token, tokenValidation, out _);
+    }
+    
     /// <summary>
     /// Throws an exception if more than 1 session is found.
     /// </summary>
-    /// <param name="sessionId"></param>
+    /// <param name="refreshToken"></param>
     /// <returns></returns>
-    private async Task<SessionModel> GetSessionAsync(ObjectId sessionId)
+    private async Task<SessionModel> GetSessionAsync(string refreshToken)
     {
-        var filter = Builders<SessionModel>.Filter.Eq(s => s.Id, sessionId);
+        var filter = Builders<SessionModel>.Filter.Eq(s => s.RefreshToken, refreshToken);
 
         return await (await sessionCollection.FindAsync(filter)).SingleAsync();
     }

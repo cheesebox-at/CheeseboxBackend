@@ -4,7 +4,6 @@ using Backend.Middleware;
 using Backend.Middleware.Authorization;
 using Backend.Models;
 using Backend.Models.Configuration;
-using Backend.Models.Product;
 using Backend.Models.User;
 using Backend.Services;
 using Backend.Services.MongoServices;
@@ -66,33 +65,34 @@ internal class Program
 
         RegisterMongoServices();
         builder.Services.AddSingleton<MongoService>();
-        builder.Services.AddSingleton<ProductDbService>();
         builder.Services.AddSingleton<UserDbService>();
         builder.Services.AddSingleton<RoleDbService>();
         builder.Services.AddSingleton<SessionService>();
         builder.Services.AddSingleton<UserService>();
-
+        
         var app = builder.Build();
 
-        // Middleware
+        // Below is Middleware 
+        
         app.UseHttpsRedirection();
-
+        
         //populates jwt(auth) cookie into auth header so that it can be used by other auth middleware
         app.UseMiddleware<JwtFromCookieMiddleware>();
-
+        
         app.UseAuthentication();
-        app.UseAuthorization();
-
+        
         app.UseMiddleware<PermissionMiddleware>();
+        
+        app.UseAuthorization();
         
         //todo what does Antiforgery even do??
         app.UseAntiforgery();
-
+        
         var apiGroup = app.MapGroup("/api");
 
-        new ProductEndpoint().Register(apiGroup);
         new SessionEndpoint().Register(apiGroup);
         new RoleEndpoint().Register(apiGroup);
+        new UserEndpoint().Register(apiGroup);
 
         app.Run();
     }
@@ -114,10 +114,7 @@ internal class Program
             //client.getdatabse automatically creates db if it doesn't exist.
             return client.GetDatabase(config.DatabaseName);
         });
-
-        RegisterCollectionService<ProductModel>(
-            dbCollectionName: "Products");
-
+        
         RegisterCollectionService<SessionModel>(
             dbCollectionName: "Sessions",
             additionalIndexes: ["UserId", "RefreshToken"],
