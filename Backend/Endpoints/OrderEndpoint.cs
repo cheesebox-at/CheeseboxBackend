@@ -103,9 +103,9 @@ public class OrderEndpoint
                     paymentMethod = order.PaymentMethod,
                     user = new
                     {
-                        name = order.UserName,
-                        email = order.UserEmail,
-                        phone = order.UserPhone
+                        name = !string.IsNullOrEmpty(order.UserName) ? order.UserName : "Unknown Customer",
+                        email = !string.IsNullOrEmpty(order.UserEmail) ? order.UserEmail : "no-email@example.com",
+                        phone = !string.IsNullOrEmpty(order.UserPhone) ? order.UserPhone : "N/A"
                     },
                     createdAt = order.CreatedAt,
                     updatedAt = order.UpdatedAt
