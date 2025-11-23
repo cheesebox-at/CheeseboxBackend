@@ -51,6 +51,18 @@ internal class Program
             
         //Authorization verifies if they have access permission to what they want to access
         builder.Services.AddAuthorization();
+        
+        // CORS configuration for frontend
+        builder.Services.AddCors(options =>
+        {
+            options.AddDefaultPolicy(policy =>
+            {
+                policy.WithOrigins("http://localhost:3000")
+                      .AllowAnyHeader()
+                      .AllowAnyMethod()
+                      .AllowCredentials();
+            });
+        });
 
         builder.Services.AddMemoryCache();
         builder.Services.AddLogging();
@@ -76,6 +88,8 @@ internal class Program
 
         // Middleware
         app.UseHttpsRedirection();
+        
+        app.UseCors();
 
         //populates jwt(auth) cookie into auth header so that it can be used by other auth middleware
         app.UseMiddleware<JwtFromCookieMiddleware>();
