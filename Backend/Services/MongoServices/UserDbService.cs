@@ -41,7 +41,7 @@ public class UserDbService(
 
                     try
                     {
-                        var sysAdminRole = roleDbService.GetRoleByIdAsync(0);
+                        var sysAdminRole = await roleDbService.GetRoleByIdAsync(0);
                     }
                     catch (InvalidOperationException ex)
                     {

@@ -22,4 +22,7 @@ public class ProductModel
     public int InStock { get; set; }
     public int MaxQuantity { get; set; }
     public int MinQuantity { get; set; }
+    public bool IsPublished { get; set; } = false;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

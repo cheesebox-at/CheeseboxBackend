@@ -29,7 +29,8 @@ public class SessionEndpoint
             IOptions<SessionConfigurationModel> sessionConfiguration, 
             SessionService sessionService, 
             UserService userService,
-            UserDbService userDbService) =>
+            UserDbService userDbService,
+            RoleDbService roleDbService) =>
         {
             try
             {
@@ -50,6 +51,33 @@ public class SessionEndpoint
             catch
             {
                 return Results.InternalServerError("Failed getting user.");
+            }
+
+            if (user == null)
+            {
+                return Results.BadRequest("User not found.");
+            }
+
+            // Check if user is admin by checking role IDs
+            bool isAdmin = false;
+            if (user.RolesIds != null && user.RolesIds.Length > 0)
+            {
+                foreach (var roleId in user.RolesIds)
+                {
+                    try
+                    {
+                        var role = await roleDbService.GetRoleByIdAsync(roleId);
+                        if (role != null && (role.Name == "SysAdmin" || role.Name == "Admin"))
+                        {
+                            isAdmin = true;
+                            break;
+                        }
+                    }
+                    catch
+                    {
+                        // Role not found, continue
+                    }
+                }
             }
 
             var session = await sessionService.CreateSessionAsync(user);
@@ -78,8 +106,23 @@ public class SessionEndpoint
                 Path = "/api/session/refresh",
             };
             context.Response.Cookies.Append("refresh", session.RefreshToken, refreshCookieOptions);
+
+            // Return user object with tokens for frontend
+            var response = new
+            {
+                user = new
+                {
+                    email = user.Email,
+                    firstName = user.FirstName,
+                    lastName = user.LastName,
+                    userId = user.UserId,
+                    isAdmin = isAdmin
+                },
+                authToken = jwt,
+                refreshToken = session.RefreshToken
+            };
             
-            return Results.Ok();
+            return Results.Ok(response);
         }).DisableAntiforgery(); //todo check if disabling antiforgery is appropriate here
 
         group.MapPost("/refresh", async (
@@ -140,8 +183,12 @@ public class SessionEndpoint
         
         group.MapPost("/register", async (
             [FromForm] RegisterDto registerDto,
-            HttpContext context, 
-            UserService userService
+            HttpContext context,
+            IOptions<SessionConfigurationModel> sessionConfiguration, 
+            SessionService sessionService, 
+            UserService userService,
+            UserDbService userDbService,
+            RoleDbService roleDbService
             ) =>
         {
             (bool IsSuccess, string Reason) result;
@@ -155,10 +202,90 @@ public class SessionEndpoint
                 return Results.InternalServerError();
             }
             
-            if(result.IsSuccess)
-                return Results.Ok(result.Reason);
+            if(!result.IsSuccess)
+                return Results.BadRequest(result.Reason);
+
+            // Get the newly created user
+            UserModel? user = null;
+            try
+            {
+                user = await userDbService.GetUserAsync(registerDto.Email.Trim());
+            }
+            catch
+            {
+                return Results.InternalServerError("Failed getting user after registration.");
+            }
+
+            if (user == null)
+            {
+                return Results.InternalServerError("User created but not found.");
+            }
+
+            // Check if user is admin by checking role IDs
+            bool isAdmin = false;
+            if (user.RolesIds != null && user.RolesIds.Length > 0)
+            {
+                foreach (var roleId in user.RolesIds)
+                {
+                    try
+                    {
+                        var role = await roleDbService.GetRoleByIdAsync(roleId);
+                        if (role != null && (role.Name == "SysAdmin" || role.Name == "Admin"))
+                        {
+                            isAdmin = true;
+                            break;
+                        }
+                    }
+                    catch
+                    {
+                        // Role not found, continue
+                    }
+                }
+            }
+
+            // Create session and generate tokens
+            var session = await sessionService.CreateSessionAsync(user);
+            var jwt = await sessionService.GenerateJwtTokenAsync(session.Id);
+
+            if (jwt is null)
+            {
+                return Results.InternalServerError("Failed generating jwt.");
+            }
             
-            return Results.BadRequest(result.Reason);
+            var jwtCookieOptions = new CookieOptions
+            {
+                Expires = DateTime.UtcNow + TimeSpan.FromMinutes(sessionConfiguration.Value.JwtExpireAfterMinutes),
+                HttpOnly = true,
+                Secure = true,
+                IsEssential = true
+            };
+            context.Response.Cookies.Append("auth", jwt, jwtCookieOptions);
+
+            var refreshCookieOptions = new CookieOptions
+            {
+                Expires = DateTime.UtcNow + TimeSpan.FromDays(sessionConfiguration.Value.ExpireAfterDays),
+                HttpOnly = true,
+                Secure = true,
+                Path = "/api/session/refresh",
+            };
+            context.Response.Cookies.Append("refresh", session.RefreshToken, refreshCookieOptions);
+
+            // Return user object with tokens for frontend
+            var response = new
+            {
+                user = new
+                {
+                    email = user.Email,
+                    firstName = user.FirstName,
+                    lastName = user.LastName,
+                    userId = user.UserId,
+                    isAdmin = isAdmin
+                },
+                authToken = jwt,
+                refreshToken = session.RefreshToken
+            };
+            
+            return Results.Ok(response);
         }).DisableAntiforgery(); //todo check if disabling antiforgery is appropriate here
     }
 }

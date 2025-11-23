@@ -4,6 +4,7 @@ using Backend.Middleware;
 using Backend.Middleware.Authorization;
 using Backend.Models;
 using Backend.Models.Configuration;
+using Backend.Models.Order;
 using Backend.Models.Product;
 using Backend.Models.User;
 using Backend.Services;
@@ -19,7 +20,7 @@ internal class Program
 {
     private static IServiceCollection? _services;
 
-    public static void Main(string[] args)
+    public static async Task Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
         
@@ -83,8 +84,22 @@ internal class Program
         builder.Services.AddSingleton<RoleDbService>();
         builder.Services.AddSingleton<SessionService>();
         builder.Services.AddSingleton<UserService>();
+        builder.Services.AddSingleton<OrderDbService>();
+        builder.Services.AddSingleton<MigrationService>();
 
         var app = builder.Build();
+        
+        // Run migration if needed
+        using (var scope = app.Services.CreateScope())
+        {
+            var migrationService = scope.ServiceProvider.GetRequiredService<MigrationService>();
+            if (await migrationService.IsMigrationNeededAsync())
+            {
+                Console.WriteLine("Running data migration...");
+                await migrationService.MigrateDataAsync();
+                Console.WriteLine("Data migration completed.");
+            }
+        }
 
         // Middleware
         app.UseHttpsRedirection();
@@ -107,6 +122,8 @@ internal class Program
         new ProductEndpoint().Register(apiGroup);
         new SessionEndpoint().Register(apiGroup);
         new RoleEndpoint().Register(apiGroup);
+        new OrderEndpoint().Register(apiGroup);
+        new ImageEndpoint().Register(apiGroup);
 
         app.Run();
     }
@@ -147,6 +164,9 @@ internal class Program
         
         RegisterCollectionService<DataStoreModel>(
             dbCollectionName: "DataStore");
+        
+        RegisterCollectionService<OrderModel>(
+            dbCollectionName: "Orders");
     }
 
     private static void RegisterCollectionService<T>(string dbCollectionName, string? uniqueIndexName = null, string[]? additionalIndexes = null,  (TimeSpan ExpireAfter, string ExpireIndexName)? expireAfterTouple = null)
