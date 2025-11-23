@@ -93,7 +93,7 @@ public class SessionEndpoint
             {
                 Expires = DateTime.UtcNow + TimeSpan.FromMinutes(sessionConfiguration.Value.JwtExpireAfterMinutes),
                 HttpOnly = true,
-                Secure = true,
+                Secure = false, // Set to true in production with HTTPS
                 IsEssential = true // todo this can maybe be removed
             };
             context.Response.Cookies.Append("auth", jwt, jwtCookieOptions);
@@ -102,7 +102,7 @@ public class SessionEndpoint
             {
                 Expires = DateTime.UtcNow + TimeSpan.FromDays(sessionConfiguration.Value.ExpireAfterDays),
                 HttpOnly = true,
-                Secure = true,
+                Secure = false, // Set to true in production with HTTPS
                 Path = "/api/session/refresh",
             };
             context.Response.Cookies.Append("refresh", session.RefreshToken, refreshCookieOptions);
@@ -160,7 +160,7 @@ public class SessionEndpoint
             {
                 Expires = DateTime.UtcNow + TimeSpan.FromDays(sessionConfiguration.Value.ExpireAfterDays),
                 HttpOnly = true,
-                Secure = true,
+                Secure = false, // Set to true in production with HTTPS
                 Path = "/api/session/refresh",
             };
             context.Response.Cookies.Append("refresh", newRefreshToken, refreshCookieOptions);
@@ -173,7 +173,7 @@ public class SessionEndpoint
             {
                 Expires = DateTime.UtcNow + TimeSpan.FromMinutes(sessionConfiguration.Value.JwtExpireAfterMinutes),
                 HttpOnly = true,
-                Secure = true,
+                Secure = false, // Set to true in production with HTTPS
                 IsEssential = true // todo this can maybe be removed
             };
             context.Response.Cookies.Append("auth", jwt, jwtCookieOptions);
@@ -256,7 +256,7 @@ public class SessionEndpoint
             {
                 Expires = DateTime.UtcNow + TimeSpan.FromMinutes(sessionConfiguration.Value.JwtExpireAfterMinutes),
                 HttpOnly = true,
-                Secure = true,
+                Secure = false, // Set to true in production with HTTPS
                 IsEssential = true
             };
             context.Response.Cookies.Append("auth", jwt, jwtCookieOptions);
@@ -265,7 +265,7 @@ public class SessionEndpoint
             {
                 Expires = DateTime.UtcNow + TimeSpan.FromDays(sessionConfiguration.Value.ExpireAfterDays),
                 HttpOnly = true,
-                Secure = true,
+                Secure = false, // Set to true in production with HTTPS
                 Path = "/api/session/refresh",
             };
             context.Response.Cookies.Append("refresh", session.RefreshToken, refreshCookieOptions);
