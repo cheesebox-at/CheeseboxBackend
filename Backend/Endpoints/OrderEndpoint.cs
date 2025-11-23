@@ -45,10 +45,74 @@ public class OrderEndpoint
             });
         });
 
-        group.MapGet("/getAll", async (OrderDbService db) =>
+        group.MapGet("/getAll", async (OrderDbService db, ProductDbService productDb) =>
         {
             var orders = await db.GetAllOrdersAsync();
-            return Results.Ok(orders);
+            
+            // Enrich orders with product details
+            var enrichedOrders = new List<object>();
+            foreach (var order in orders)
+            {
+                var product = await productDb.GetProductByIdAsync(order.ProductId);
+                
+                // Enrich additional products
+                var enrichedAdditionalProducts = new List<object>();
+                foreach (var ap in order.AdditionalProducts)
+                {
+                    var additionalProduct = await productDb.GetProductByIdAsync(ap.ProductId);
+                    enrichedAdditionalProducts.Add(new
+                    {
+                        productId = ap.ProductId.ToString(),
+                        quantity = ap.Quantity,
+                        pricePerUnit = ap.PricePerUnit,
+                        product = additionalProduct != null ? new
+                        {
+                            id = additionalProduct.Id.ToString(),
+                            name = additionalProduct.Name,
+                            imageName = additionalProduct.ImageName,
+                            basePrice = additionalProduct.BasePrice
+                        } : null
+                    });
+                }
+                
+                enrichedOrders.Add(new
+                {
+                    id = order.Id.ToString(),
+                    orderNumber = order.OrderNumber,
+                    userId = order.UserId,
+                    productId = order.ProductId.ToString(),
+                    product = product != null ? new
+                    {
+                        id = product.Id.ToString(),
+                        name = product.Name,
+                        imageName = product.ImageName,
+                        basePrice = product.BasePrice,
+                        description = product.Description
+                    } : null,
+                    additionalProducts = enrichedAdditionalProducts,
+                    startDate = order.StartDate,
+                    endDate = order.EndDate,
+                    durationHours = order.DurationHours,
+                    deliveryOption = order.DeliveryOption,
+                    deliveryAddress = order.DeliveryAddress,
+                    status = order.Status,
+                    totalPrice = order.TotalPrice,
+                    originalPrice = order.OriginalPrice,
+                    appliedDiscountId = order.AppliedDiscountId,
+                    promoCodeId = order.PromoCodeId,
+                    paymentMethod = order.PaymentMethod,
+                    user = new
+                    {
+                        name = order.UserName,
+                        email = order.UserEmail,
+                        phone = order.UserPhone
+                    },
+                    createdAt = order.CreatedAt,
+                    updatedAt = order.UpdatedAt
+                });
+            }
+            
+            return Results.Ok(enrichedOrders);
         }).RequireAuthorization();
         
         group.MapGet("/getOne", async (string id, OrderDbService db) =>
