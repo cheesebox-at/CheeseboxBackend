@@ -10,3 +10,4 @@ Backend/obj
 *.user
 .idea/.idea.CheeseBoxBackend/.idea/workspace.xml
 .idea/.idea.CheeseBox Backend/.idea/workspace.xml
+Backend/assets/products/*.jpg
