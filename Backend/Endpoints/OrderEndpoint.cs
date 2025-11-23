@@ -32,7 +32,17 @@ public class OrderEndpoint
                 return Results.BadRequest("Product is out of stock");
             
             var result = await orderDb.CreateOrderAsync(order);
-            return result is not null ? Results.Ok(result) : Results.BadRequest();
+            
+            if (result is null)
+                return Results.BadRequest("Failed to create order");
+            
+            // Return extended response with order details
+            return Results.Ok(new
+            {
+                order = result,
+                orderNumber = result.OrderNumber,
+                orderId = result.Id.ToString()
+            });
         });
 
         group.MapGet("/getAll", async (OrderDbService db) =>
@@ -47,11 +57,21 @@ public class OrderEndpoint
             return order is not null ? Results.Ok(order) : Results.NotFound();
         }).RequireAuthorization();
         
-        group.MapGet("/getByOrderNumber", async (string orderNumber, OrderDbService db) =>
+        group.MapGet("/getByOrderNumber/{orderNumber}", async (string orderNumber, OrderDbService db, ProductDbService productDb) =>
         {
             var order = await db.GetOrderByOrderNumberAsync(orderNumber);
-            return order is not null ? Results.Ok(order) : Results.NotFound();
-        }).RequireAuthorization();
+            if (order is null)
+                return Results.NotFound();
+            
+            // Enrich with product details
+            var product = await productDb.GetProductByIdAsync(order.ProductId);
+            
+            return Results.Ok(new
+            {
+                order = order,
+                product = product
+            });
+        }); // No RequireAuthorization - public endpoint for success page
         
         group.MapGet("/getByUser", async (long userId, OrderDbService db) =>
         {

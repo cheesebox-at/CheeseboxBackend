@@ -12,7 +12,7 @@ public class OrderModel
     [JsonConverter(typeof(ObjectIdStringConverter))]
     public ObjectId Id { get; set; }
     
-    public required string OrderNumber { get; set; }
+    public string OrderNumber { get; set; } = string.Empty;
     public required long UserId { get; set; }
     
     [JsonConverter(typeof(ObjectIdStringConverter))]
