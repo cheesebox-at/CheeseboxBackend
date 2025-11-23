@@ -105,6 +105,14 @@ internal class Program
         app.UseHttpsRedirection();
         
         app.UseCors();
+        
+        // Enable serving static files from assets folder
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(
+                Path.Combine(builder.Environment.ContentRootPath, "assets")),
+            RequestPath = "/assets"
+        });
 
         //populates jwt(auth) cookie into auth header so that it can be used by other auth middleware
         app.UseMiddleware<JwtFromCookieMiddleware>();
