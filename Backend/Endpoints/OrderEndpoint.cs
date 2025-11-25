@@ -45,6 +45,33 @@ public class OrderEndpoint
             });
         });
 
+        group.MapGet("/getAdditionalAvailability", async (DateTime start, DateTime end, OrderDbService orderDb, ProductDbService productDb) =>
+        {
+            // Get all published products
+            var products = await productDb.GetPublishedProductsAsync();
+            
+            // Get usage of additional products ONLY within the requested time frame
+            var usage = await orderDb.GetAdditionalProductsUsageInDateRangeAsync(start, end);
+
+            var additionalProducts = products
+                .Where(p => p.Type == EProductTypes.PurchasableAddon || p.Type == EProductTypes.RentableAddon)
+                .ToList();
+
+            var availability = additionalProducts.Select(p =>
+            {
+                usage.TryGetValue(p.Id, out var orderedQuantity);
+                var available = Math.Max(0, p.InStock - orderedQuantity);
+
+                return new
+                {
+                    productId = p.Id.ToString(),
+                    available
+                };
+            });
+
+            return Results.Ok(availability);
+        }).RequireAuthorization();
+
         group.MapGet("/getAll", async (OrderDbService db, ProductDbService productDb) =>
         {
             var orders = await db.GetAllOrdersAsync();
@@ -244,4 +271,3 @@ public class OrderEndpoint
         }).RequireAuthorization();
     }
 }
-

@@ -83,6 +83,70 @@ public class OrderDbService(IMongoCollection<OrderModel> orderDb, ILogger<OrderD
         return result;
     }
 
+    /// <summary>
+    /// Aggregates the total ordered quantity for each additional product across all
+    /// non-cancelled orders that overlap with the given date range.
+    /// </summary>
+    public async Task<Dictionary<ObjectId, int>> GetAdditionalProductsUsageInDateRangeAsync(DateTime start, DateTime end)
+    {
+        // Filter for orders that overlap with the requested range AND are not cancelled
+        var filter = Builders<OrderModel>.Filter.And(
+            Builders<OrderModel>.Filter.Ne(o => o.Status, EOrderStatus.Cancelled),
+            Builders<OrderModel>.Filter.Lt(o => o.StartDate, end),
+            Builders<OrderModel>.Filter.Gt(o => o.EndDate, start)
+        );
+
+        var orders = await orderDb.Find(filter).ToListAsync();
+
+        var usage = new Dictionary<ObjectId, int>();
+
+        foreach (var order in orders)
+        {
+            foreach (var additional in order.AdditionalProducts)
+            {
+                if (!usage.TryGetValue(additional.ProductId, out var current))
+                {
+                    usage[additional.ProductId] = additional.Quantity;
+                }
+                else
+                {
+                    usage[additional.ProductId] = current + additional.Quantity;
+                }
+            }
+        }
+
+        return usage;
+    }
+
+    /// <summary>
+    /// Aggregates the total ordered quantity for each additional product across all
+    /// non-cancelled orders. (Legacy/Global usage)
+    /// </summary>
+    public async Task<Dictionary<ObjectId, int>> GetAdditionalProductsUsageAsync()
+    {
+        var filter = Builders<OrderModel>.Filter.Ne(o => o.Status, EOrderStatus.Cancelled);
+        var orders = await orderDb.Find(filter).ToListAsync();
+
+        var usage = new Dictionary<ObjectId, int>();
+
+        foreach (var order in orders)
+        {
+            foreach (var additional in order.AdditionalProducts)
+            {
+                if (!usage.TryGetValue(additional.ProductId, out var current))
+                {
+                    usage[additional.ProductId] = additional.Quantity;
+                }
+                else
+                {
+                    usage[additional.ProductId] = current + additional.Quantity;
+                }
+            }
+        }
+
+        return usage;
+    }
+
     public async Task<bool> UpdateOrderStatusAsync(ObjectId id, EOrderStatus status)
     {
         var update = Builders<OrderModel>.Update
@@ -134,6 +198,3 @@ public class OrderDbService(IMongoCollection<OrderModel> orderDb, ILogger<OrderD
         return $"CB-{timestamp}-{count + 1:D4}";
     }
 }
-
-
-
