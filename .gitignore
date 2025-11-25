@@ -11,3 +11,5 @@ Backend/obj
 .idea/.idea.CheeseBoxBackend/.idea/workspace.xml
 .idea/.idea.CheeseBox Backend/.idea/workspace.xml
 Backend/assets/products/*.jpg
+Backend/assets/products/*.png
+Backend/assets/products/*.webp

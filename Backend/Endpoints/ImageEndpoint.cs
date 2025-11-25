@@ -4,7 +4,8 @@ namespace Backend.Endpoints;
 
 public class ImageEndpoint
 {
-    private const long MaxFileSize = 5 * 1024 * 1024; // 5MB
+    // Max upload size (bytes). Increased to 15MB to better support large PNGs.
+    private const long MaxFileSize = 15 * 1024 * 1024; // 15MB
     private static readonly string[] AllowedExtensions = { ".jpg", ".jpeg", ".png", ".webp" };
     
     public void Register(RouteGroupBuilder app)

@@ -11,10 +11,9 @@ public class ProductDbService(IMongoCollection<ProductModel> productDb, ILogger<
         product.CreatedAt = DateTime.UtcNow;
         product.UpdatedAt = DateTime.UtcNow;
         await productDb.InsertOneAsync(product);
-
-        if (product.Id == ObjectId.Empty)
-            return null;
-
+        
+        // MongoDB will automatically assign an ObjectId if none is set,
+        // so we can safely return the product after insert.
         return product;
     }
 
