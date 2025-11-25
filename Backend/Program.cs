@@ -9,6 +9,7 @@ using Backend.Models.User;
 using Backend.Services;
 using Backend.Services.MongoServices;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using MongoDB.Driver;
@@ -93,9 +94,20 @@ internal class Program
         // Middleware
         app.UseHttpsRedirection();
         
+        // Serve static files from the "assets" folder (e.g., /assets/products/...)
+        var assetsPath = Path.Combine(app.Environment.ContentRootPath, "assets");
+        if (Directory.Exists(assetsPath))
+        {
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = new PhysicalFileProvider(assetsPath),
+                RequestPath = "/assets"
+            });
+        }
+        
         app.UseCors();
 
-        //populates jwt(auth) cookie into auth header so that it can be used by other auth middleware
+        // populates jwt(auth) cookie into auth header so that it can be used by other auth middleware
         app.UseMiddleware<JwtFromCookieMiddleware>();
 
         app.UseAuthentication();
