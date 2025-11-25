@@ -34,6 +34,7 @@ public class UserService(UserDbService userDbService, SessionService sessionServ
         var result = await userDbService.CreateNewUserAsync(new UserModel
         {
             EUserType = EUserType.User,
+            Phone = dto.Phone,
             EmailVerified = false,
             Email = dto.Email.Trim(),
             PasswordHash = passHash,

@@ -6,7 +6,6 @@ namespace Backend.Models.User;
 
 public class UserModel
 {
-
     [BsonId]
     public long UserId { get; set; }
     public required EUserType EUserType { get; set; }
@@ -18,5 +17,6 @@ public class UserModel
     public required string FirstName { get; set; }
     public required string LastName { get; set; }
     public required AddressModel[] AddressData { get; set; } = [];
+    public string Phone { get; set; } = string.Empty;
     public UserMetrics UserMetrics { get; set; } = new();
 }

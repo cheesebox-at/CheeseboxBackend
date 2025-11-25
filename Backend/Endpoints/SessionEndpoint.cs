@@ -115,6 +115,7 @@ public class SessionEndpoint
                     email = user.Email,
                     firstName = user.FirstName,
                     lastName = user.LastName,
+                    phone = user.Phone ?? string.Empty,
                     userId = user.UserId,
                     isAdmin = isAdmin
                 },
@@ -278,6 +279,7 @@ public class SessionEndpoint
                     email = user.Email,
                     firstName = user.FirstName,
                     lastName = user.LastName,
+                    phone = user.Phone ?? string.Empty,
                     userId = user.UserId,
                     isAdmin = isAdmin
                 },
