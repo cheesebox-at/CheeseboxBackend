@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using MongoDB.Driver;
+using Backend.Models.Order;
 
 namespace Backend;
 
@@ -84,6 +85,9 @@ internal class Program
         builder.Services.AddSingleton<SessionService>();
         builder.Services.AddSingleton<UserService>();
 
+        builder.Services.AddSingleton<OrderDbService>();
+        builder.Services.AddSingleton<MigrationService>();
+
         var app = builder.Build();
 
         // Middleware
@@ -129,24 +133,33 @@ internal class Program
             return client.GetDatabase(config.DatabaseName);
         });
 
+        // Products collection
         RegisterCollectionService<ProductModel>(
             dbCollectionName: "Products");
 
+        // Sessions collection with indexes
         RegisterCollectionService<SessionModel>(
             dbCollectionName: "Sessions",
             additionalIndexes: ["UserId", "RefreshToken"],
             // expireAfterTouple: (TimeSpan.FromDays(builder.Configuration.GetSection("Session").GetValue<int>("ExpireAfterDays")), nameof(SessionModel.ExpireAfter)));
             expireAfterTouple: (TimeSpan.FromSeconds(1), nameof(SessionModel.ExpireAt)));
         
+        // Users collection with unique Email index
         RegisterCollectionService<UserModel>(
             dbCollectionName: "Users", 
             uniqueIndexName: "Email");
 
+        // Roles collection
         RegisterCollectionService<RoleModel>(
             dbCollectionName: "Roles");
         
+        // DataStore collection
         RegisterCollectionService<DataStoreModel>(
             dbCollectionName: "DataStore");
+
+        // Orders collection
+        RegisterCollectionService<OrderModel>(
+            dbCollectionName: "Orders");
     }
 
     private static void RegisterCollectionService<T>(string dbCollectionName, string? uniqueIndexName = null, string[]? additionalIndexes = null,  (TimeSpan ExpireAfter, string ExpireIndexName)? expireAfterTouple = null)
