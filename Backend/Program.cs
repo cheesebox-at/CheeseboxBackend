@@ -111,6 +111,8 @@ internal class Program
         new ProductEndpoint().Register(apiGroup);
         new SessionEndpoint().Register(apiGroup);
         new RoleEndpoint().Register(apiGroup);
+        new OrderEndpoint().Register(apiGroup);
+        new ImageEndpoint().Register(apiGroup);
 
         app.Run();
     }
