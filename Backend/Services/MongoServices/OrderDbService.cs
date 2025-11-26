@@ -197,4 +197,18 @@ public class OrderDbService(IMongoCollection<OrderModel> orderDb, ILogger<OrderD
         var count = await orderDb.CountDocumentsAsync(FilterDefinition<OrderModel>.Empty);
         return $"CB-{timestamp}-{count + 1:D4}";
     }
+
+    public async Task<bool> DeleteOrderAsync(ObjectId id)
+    {
+        var filter = Builders<OrderModel>.Filter.Eq(o => o.Id, id);
+        var result = await orderDb.DeleteOneAsync(filter);
+        return result.DeletedCount > 0;
+    }
+
+    public async Task<long> DeleteOrdersAsync(List<ObjectId> ids)
+    {
+        var filter = Builders<OrderModel>.Filter.In(o => o.Id, ids);
+        var result = await orderDb.DeleteManyAsync(filter);
+        return result.DeletedCount;
+    }
 }

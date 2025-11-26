@@ -269,5 +269,39 @@ public class OrderEndpoint
             
             return Results.Ok(statistics);
         }).RequireAuthorization();
+
+        group.MapDelete("/delete", async (string id, OrderDbService db) =>
+        {
+            if (!ObjectId.TryParse(id, out var objectId))
+                return Results.BadRequest("Invalid order ID");
+                
+            var success = await db.DeleteOrderAsync(objectId);
+            return success ? Results.Ok(new { message = "Order deleted successfully" }) : Results.NotFound();
+        }).RequireAuthorization();
+
+        group.MapDelete("/deleteMany", async (HttpRequest request, OrderDbService db) =>
+        {
+            var body = await request.ReadFromJsonAsync<DeleteManyRequest>();
+            if (body?.Ids == null || body.Ids.Count == 0)
+                return Results.BadRequest("No order IDs provided");
+
+            var objectIds = new List<ObjectId>();
+            foreach (var id in body.Ids)
+            {
+                if (ObjectId.TryParse(id, out var objectId))
+                    objectIds.Add(objectId);
+            }
+
+            if (objectIds.Count == 0)
+                return Results.BadRequest("No valid order IDs provided");
+
+            var deletedCount = await db.DeleteOrdersAsync(objectIds);
+            return Results.Ok(new { deletedCount, message = $"{deletedCount} order(s) deleted successfully" });
+        }).RequireAuthorization();
     }
+}
+
+public class DeleteManyRequest
+{
+    public List<string> Ids { get; set; } = new();
 }
