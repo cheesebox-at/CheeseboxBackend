@@ -80,6 +80,9 @@ public class SessionEndpoint
                 }
             }
 
+            // Update last login timestamp
+            await userDbService.UpdateLastLoginAsync(user.UserId);
+
             var session = await sessionService.CreateSessionAsync(user);
             
             var jwt = await sessionService.GenerateJwtTokenAsync(session.Id);

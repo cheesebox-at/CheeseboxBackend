@@ -215,4 +215,28 @@ public class UserDbService(
         return users;
     }
 
+    /// <summary>
+    /// Updates the user's last login timestamp
+    /// </summary>
+    /// <param name="userId">User ID</param>
+    /// <returns>True if update successful</returns>
+    public async Task<bool> UpdateLastLoginAsync(long userId)
+    {
+        try
+        {
+            var filter = Builders<UserModel>.Filter.Eq(x => x.UserId, userId);
+            var update = Builders<UserModel>.Update
+                .Set(x => x.UserMetrics.LastLogin, DateTime.UtcNow)
+                .Set(x => x.UserMetrics.LastActivity, DateTime.UtcNow);
+            
+            var result = await userCollection.UpdateOneAsync(filter, update);
+            return result.ModifiedCount > 0;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to update last login for user {UserId}", userId);
+            return false;
+        }
+    }
+
 }

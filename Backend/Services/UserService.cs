@@ -41,7 +41,14 @@ public class UserService(UserDbService userDbService, SessionService sessionServ
             PasswordSalt = Convert.ToBase64String(salt),
             FirstName = dto.FirstName,
             LastName = dto.LastName,
-            AddressData = (dto.AddressData ?? [])! // Suppress warning because the code actually works, the warning is wrong.
+            AddressData = (dto.AddressData ?? [])!, // Suppress warning because the code actually works, the warning is wrong.
+            UserMetrics = new UserMetrics
+            {
+                RegisteredAt = DateTime.UtcNow,
+                LastLogin = DateTime.UtcNow,
+                LastActivity = DateTime.UtcNow,
+                LastUpdate = DateTime.UtcNow
+            }
         });
 
         return (result.IsSuccess, result.Reason);
