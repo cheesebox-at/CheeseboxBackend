@@ -1,9 +1,11 @@
 using Backend.DTOs;
 using Backend.Enums;
 using Backend.Models.User;
+using Backend.Services;
 using Backend.Services.MongoServices;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Cryptography;
 
 namespace Backend.Endpoints;
 
@@ -135,7 +137,7 @@ public class UserEndpoint
         {
             try
             {
-                var userIdClaim = context.User.FindFirst("UserId")?.Value;
+                var userIdClaim = context.User.FindFirst("userId")?.Value;
                 if (string.IsNullOrEmpty(userIdClaim) || !long.TryParse(userIdClaim, out var userId))
                 {
                     return Results.Unauthorized();
@@ -193,6 +195,125 @@ public class UserEndpoint
             catch (Exception ex)
             {
                 return Results.InternalServerError($"Error fetching statistics: {ex.Message}");
+            }
+        });
+
+        // Update current user's profile
+        group.MapPut("/update", [Authorize] async (
+            HttpContext context,
+            [FromBody] UpdateUserProfileDto updateDto,
+            UserDbService userDbService) =>
+        {
+            try
+            {
+                var userIdClaim = context.User.FindFirst("userId")?.Value;
+                if (string.IsNullOrEmpty(userIdClaim) || !long.TryParse(userIdClaim, out var userId))
+                {
+                    return Results.Unauthorized();
+                }
+
+                var success = await userDbService.UpdateUserProfileAsync(
+                    userId,
+                    updateDto.FirstName,
+                    updateDto.LastName,
+                    updateDto.Phone,
+                    updateDto.Street,
+                    updateDto.HouseNumber,
+                    updateDto.PostalCode,
+                    updateDto.City
+                );
+
+                if (success)
+                {
+                    // Return updated user data
+                    var user = await userDbService.TryGetUserByIdAsync(userId);
+                    if (user != null)
+                    {
+                        return Results.Ok(new
+                        {
+                            success = true,
+                            message = "Profile updated successfully",
+                            user = new
+                            {
+                                userId = user.UserId,
+                                email = user.Email,
+                                firstName = user.FirstName,
+                                lastName = user.LastName,
+                                phone = user.Phone,
+                                street = user.AddressData?.FirstOrDefault()?.Street ?? "",
+                                postalCode = user.AddressData?.FirstOrDefault()?.ZipCode ?? "",
+                                city = user.AddressData?.FirstOrDefault()?.City ?? ""
+                            }
+                        });
+                    }
+                }
+
+                return Results.BadRequest("Failed to update profile");
+            }
+            catch (Exception ex)
+            {
+                return Results.InternalServerError($"Error updating profile: {ex.Message}");
+            }
+        });
+
+        // Change password
+        group.MapPost("/change-password", [Authorize] async (
+            HttpContext context,
+            [FromBody] ChangePasswordDto passwordDto,
+            UserDbService userDbService,
+            SessionService sessionService) =>
+        {
+            try
+            {
+                var userIdClaim = context.User.FindFirst("userId")?.Value;
+                if (string.IsNullOrEmpty(userIdClaim) || !long.TryParse(userIdClaim, out var userId))
+                {
+                    return Results.Unauthorized();
+                }
+
+                // Get user
+                var user = await userDbService.TryGetUserByIdAsync(userId);
+                if (user == null)
+                {
+                    return Results.NotFound("User not found");
+                }
+
+                // Verify old password
+                var oldPasswordHash = sessionService.HashPassword(passwordDto.OldPassword, Convert.FromBase64String(user.PasswordSalt));
+                if (oldPasswordHash != user.PasswordHash)
+                {
+                    return Results.BadRequest(new { success = false, message = "Aktuelles Passwort ist falsch" });
+                }
+
+                // Validate new password
+                if (string.IsNullOrWhiteSpace(passwordDto.NewPassword) || passwordDto.NewPassword.Length < 6)
+                {
+                    return Results.BadRequest(new { success = false, message = "Das neue Passwort muss mindestens 6 Zeichen lang sein" });
+                }
+
+                if (passwordDto.NewPassword != passwordDto.ConfirmPassword)
+                {
+                    return Results.BadRequest(new { success = false, message = "Die Passwörter stimmen nicht überein" });
+                }
+
+                // Generate new salt and hash
+                var newSalt = new byte[16];
+                RandomNumberGenerator.Create().GetBytes(newSalt);
+                var newPasswordHash = sessionService.HashPassword(passwordDto.NewPassword, newSalt);
+
+                // Update password
+                var success = await userDbService.UpdatePasswordAsync(userId, newPasswordHash, Convert.ToBase64String(newSalt));
+
+                if (success)
+                {
+                    return Results.Ok(new { success = true, message = "Passwort erfolgreich geändert" });
+                }
+
+                return Results.BadRequest(new { success = false, message = "Fehler beim Ändern des Passworts" });
+            }
+            catch (Exception ex)
+            {
+                return Results.InternalServerError($"Error changing password: {ex.Message}");
             }
         });
     }

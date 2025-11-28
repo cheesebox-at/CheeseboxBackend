@@ -239,4 +239,121 @@ public class UserDbService(
         }
     }
 
+    /// <summary>
+    /// Updates user profile data
+    /// </summary>
+    /// <param name="userId">User ID</param>
+    /// <param name="firstName">First name</param>
+    /// <param name="lastName">Last name</param>
+    /// <param name="phone">Phone number</param>
+    /// <param name="street">Street</param>
+    /// <param name="houseNumber">House number</param>
+    /// <param name="postalCode">Postal code</param>
+    /// <param name="city">City</param>
+    /// <returns>True if update successful</returns>
+    public async Task<bool> UpdateUserProfileAsync(
+        long userId, 
+        string? firstName, 
+        string? lastName, 
+        string? phone,
+        string? street,
+        string? houseNumber,
+        string? postalCode,
+        string? city)
+    {
+        try
+        {
+            var filter = Builders<UserModel>.Filter.Eq(x => x.UserId, userId);
+            var updateDefinitions = new List<UpdateDefinition<UserModel>>();
+
+            if (firstName != null)
+                updateDefinitions.Add(Builders<UserModel>.Update.Set(x => x.FirstName, firstName));
+            if (lastName != null)
+                updateDefinitions.Add(Builders<UserModel>.Update.Set(x => x.LastName, lastName));
+            if (phone != null)
+                updateDefinitions.Add(Builders<UserModel>.Update.Set(x => x.Phone, phone));
+            
+            // Update metrics
+            updateDefinitions.Add(Builders<UserModel>.Update.Set(x => x.UserMetrics.LastUpdate, DateTime.UtcNow));
+            updateDefinitions.Add(Builders<UserModel>.Update.Set(x => x.UserMetrics.LastActivity, DateTime.UtcNow));
+
+            // Handle address data - create or update primary address
+            if (street != null || houseNumber != null || postalCode != null || city != null)
+            {
+                var user = await TryGetUserByIdAsync(userId);
+                if (user != null)
+                {
+                    var addresses = user.AddressData?.ToList() ?? new List<AddressModel>();
+                    
+                    if (addresses.Count > 0)
+                    {
+                        // Update first address
+                        if (street != null) addresses[0].Street = street + (houseNumber != null ? " " + houseNumber : "");
+                        if (postalCode != null) addresses[0].ZipCode = postalCode;
+                        if (city != null) addresses[0].City = city;
+                    }
+                    else
+                    {
+                        // Create new address
+                        addresses.Add(new AddressModel
+                        {
+                            FirstName = firstName ?? user.FirstName,
+                            LastName = lastName ?? user.LastName,
+                            Street = (street ?? "") + (houseNumber != null ? " " + houseNumber : ""),
+                            ZipCode = postalCode ?? "",
+                            City = city ?? "",
+                            State = "",
+                            Country = "Austria"
+                        });
+                    }
+                    
+                    updateDefinitions.Add(Builders<UserModel>.Update.Set(x => x.AddressData, addresses.ToArray()));
+                }
+            }
+
+            if (updateDefinitions.Count == 0)
+                return true;
+
+            var update = Builders<UserModel>.Update.Combine(updateDefinitions);
+            var result = await userCollection.UpdateOneAsync(filter, update);
+            
+            logger.LogInformation("Updated user profile for user {UserId}", userId);
+            return result.ModifiedCount > 0 || result.MatchedCount > 0;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to update profile for user {UserId}", userId);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Updates user password
+    /// </summary>
+    /// <param name="userId">User ID</param>
+    /// <param name="newPasswordHash">New password hash</param>
+    /// <param name="newPasswordSalt">New password salt</param>
+    /// <returns>True if update successful</returns>
+    public async Task<bool> UpdatePasswordAsync(long userId, string newPasswordHash, string newPasswordSalt)
+    {
+        try
+        {
+            var filter = Builders<UserModel>.Filter.Eq(x => x.UserId, userId);
+            var update = Builders<UserModel>.Update
+                .Set(x => x.PasswordHash, newPasswordHash)
+                .Set(x => x.PasswordSalt, newPasswordSalt)
+                .Set(x => x.UserMetrics.LastUpdate, DateTime.UtcNow)
+                .Set(x => x.UserMetrics.LastActivity, DateTime.UtcNow);
+            
+            var result = await userCollection.UpdateOneAsync(filter, update);
+            logger.LogInformation("Updated password for user {UserId}", userId);
+            return result.ModifiedCount > 0;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to update password for user {UserId}", userId);
+            return false;
+        }
+    }
+
 }

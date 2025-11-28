@@ -97,7 +97,9 @@ public class SessionEndpoint
                 Expires = DateTime.UtcNow + TimeSpan.FromMinutes(sessionConfiguration.Value.JwtExpireAfterMinutes),
                 HttpOnly = true,
                 Secure = false, // Set to true in production with HTTPS
-                IsEssential = true // todo this can maybe be removed
+                SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax,
+                IsEssential = true,
+                Path = "/api" // Make sure cookie is sent for all API requests
             };
             context.Response.Cookies.Append("auth", jwt, jwtCookieOptions);
 
@@ -106,6 +108,7 @@ public class SessionEndpoint
                 Expires = DateTime.UtcNow + TimeSpan.FromDays(sessionConfiguration.Value.ExpireAfterDays),
                 HttpOnly = true,
                 Secure = false, // Set to true in production with HTTPS
+                SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax,
                 Path = "/api/session/refresh",
             };
             context.Response.Cookies.Append("refresh", session.RefreshToken, refreshCookieOptions);
@@ -165,6 +168,7 @@ public class SessionEndpoint
                 Expires = DateTime.UtcNow + TimeSpan.FromDays(sessionConfiguration.Value.ExpireAfterDays),
                 HttpOnly = true,
                 Secure = false, // Set to true in production with HTTPS
+                SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax,
                 Path = "/api/session/refresh",
             };
             context.Response.Cookies.Append("refresh", newRefreshToken, refreshCookieOptions);
@@ -178,7 +182,9 @@ public class SessionEndpoint
                 Expires = DateTime.UtcNow + TimeSpan.FromMinutes(sessionConfiguration.Value.JwtExpireAfterMinutes),
                 HttpOnly = true,
                 Secure = false, // Set to true in production with HTTPS
-                IsEssential = true // todo this can maybe be removed
+                SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax,
+                IsEssential = true,
+                Path = "/api"
             };
             context.Response.Cookies.Append("auth", jwt, jwtCookieOptions);
             
@@ -261,7 +267,9 @@ public class SessionEndpoint
                 Expires = DateTime.UtcNow + TimeSpan.FromMinutes(sessionConfiguration.Value.JwtExpireAfterMinutes),
                 HttpOnly = true,
                 Secure = false, // Set to true in production with HTTPS
-                IsEssential = true
+                SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax,
+                IsEssential = true,
+                Path = "/api"
             };
             context.Response.Cookies.Append("auth", jwt, jwtCookieOptions);
 
@@ -270,6 +278,7 @@ public class SessionEndpoint
                 Expires = DateTime.UtcNow + TimeSpan.FromDays(sessionConfiguration.Value.ExpireAfterDays),
                 HttpOnly = true,
                 Secure = false, // Set to true in production with HTTPS
+                SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax,
                 Path = "/api/session/refresh",
             };
             context.Response.Cookies.Append("refresh", session.RefreshToken, refreshCookieOptions);
