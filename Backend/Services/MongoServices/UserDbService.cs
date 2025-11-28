@@ -121,6 +121,98 @@ public class UserDbService(
 
         return user;
     }
-    
+
+    /// <summary>
+    /// Gets all users from the database
+    /// </summary>
+    /// <param name="skip">Number of records to skip (for pagination)</param>
+    /// <param name="limit">Maximum number of records to return</param>
+    /// <returns>List of users</returns>
+    public async Task<List<UserModel>> GetAllUsersAsync(int skip = 0, int limit = 100)
+    {
+        var filter = Builders<UserModel>.Filter.Empty;
+        var options = new FindOptions<UserModel>
+        {
+            Skip = skip,
+            Limit = limit,
+            Sort = Builders<UserModel>.Sort.Descending(x => x.UserId)
+        };
+        
+        var users = await (await userCollection.FindAsync(filter, options)).ToListAsync();
+        return users;
+    }
+
+    /// <summary>
+    /// Gets the total count of users
+    /// </summary>
+    /// <returns>Total number of users</returns>
+    public async Task<long> GetUserCountAsync()
+    {
+        return await userCollection.CountDocumentsAsync(Builders<UserModel>.Filter.Empty);
+    }
+
+    /// <summary>
+    /// Tries to get a user by email, returns null if not found
+    /// </summary>
+    /// <param name="email"></param>
+    /// <returns>User or null</returns>
+    public async Task<UserModel?> TryGetUserByEmailAsync(string email)
+    {
+        try
+        {
+            var filter = Builders<UserModel>.Filter.Eq(x => x.Email, email);
+            var user = await (await userCollection.FindAsync(filter)).FirstOrDefaultAsync();
+            return user;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Tries to get a user by ID, returns null if not found
+    /// </summary>
+    /// <param name="userId"></param>
+    /// <returns>User or null</returns>
+    public async Task<UserModel?> TryGetUserByIdAsync(long userId)
+    {
+        try
+        {
+            var filter = Builders<UserModel>.Filter.Eq(x => x.UserId, userId);
+            var user = await (await userCollection.FindAsync(filter)).FirstOrDefaultAsync();
+            return user;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Search users by name or email
+    /// </summary>
+    /// <param name="searchQuery">Search query</param>
+    /// <param name="skip">Number of records to skip</param>
+    /// <param name="limit">Maximum number of records</param>
+    /// <returns>List of matching users</returns>
+    public async Task<List<UserModel>> SearchUsersAsync(string searchQuery, int skip = 0, int limit = 100)
+    {
+        var filter = Builders<UserModel>.Filter.Or(
+            Builders<UserModel>.Filter.Regex(x => x.Email, new MongoDB.Bson.BsonRegularExpression(searchQuery, "i")),
+            Builders<UserModel>.Filter.Regex(x => x.FirstName, new MongoDB.Bson.BsonRegularExpression(searchQuery, "i")),
+            Builders<UserModel>.Filter.Regex(x => x.LastName, new MongoDB.Bson.BsonRegularExpression(searchQuery, "i"))
+        );
+        
+        var options = new FindOptions<UserModel>
+        {
+            Skip = skip,
+            Limit = limit,
+            Sort = Builders<UserModel>.Sort.Descending(x => x.UserId)
+        };
+        
+        var users = await (await userCollection.FindAsync(filter, options)).ToListAsync();
+        return users;
+    }
 
 }
