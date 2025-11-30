@@ -95,5 +95,33 @@ public class ProductEndpoint
             
             return Results.Ok(new { isAvailable, inStock = product.InStock });
         });
+        
+        group.MapGet("/getBookedTimeFrames", async (string productId, DateTime? rangeStart, DateTime? rangeEnd, OrderDbService orderDb) =>
+        {
+            if (!ObjectId.TryParse(productId, out var objectId))
+                return Results.BadRequest("Invalid product ID");
+            
+            var bookedTimeFrames = await orderDb.GetBookedTimeFramesAsync(objectId);
+            
+            // Filter by date range if provided
+            if (rangeStart.HasValue || rangeEnd.HasValue)
+            {
+                var filtered = bookedTimeFrames.Where(btf =>
+                {
+                    // Include if booking overlaps with requested range
+                    var bookingStart = btf.StartDate;
+                    var bookingEnd = btf.EndDate;
+                    var requestStart = rangeStart ?? DateTime.MinValue;
+                    var requestEnd = rangeEnd ?? DateTime.MaxValue;
+                    
+                    // Check for overlap: booking overlaps if not (bookingEnd <= requestStart || bookingStart >= requestEnd)
+                    return !(bookingEnd <= requestStart || bookingStart >= requestEnd);
+                }).ToList();
+                
+                return Results.Ok(filtered.Select(btf => new { startDate = btf.StartDate, endDate = btf.EndDate }));
+            }
+            
+            return Results.Ok(bookedTimeFrames.Select(btf => new { startDate = btf.StartDate, endDate = btf.EndDate }));
+        });
     }
 }
