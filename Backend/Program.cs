@@ -59,10 +59,28 @@ internal class Program
         {
             options.AddDefaultPolicy(policy =>
             {
-                policy.WithOrigins("http://localhost:3000")
-                      .AllowAnyHeader()
-                      .AllowAnyMethod()
-                      .AllowCredentials();
+                // In development, allow requests from localhost and local network IPs
+                if (builder.Environment.IsDevelopment())
+                {
+                    policy.SetIsOriginAllowed(origin =>
+                    {
+                        // Allow localhost and any IP address on port 3000
+                        return origin.StartsWith("http://0.0.0.0:3000") ||
+                               origin.StartsWith("http://localhost:3000") ||
+                               (origin.StartsWith("http://") && origin.EndsWith(":3000") && 
+                                System.Net.IPAddress.TryParse(origin.Replace("http://", "").Replace(":3000", ""), out _));
+                    })
+                    .AllowAnyHeader()
+                    .AllowAnyMethod()
+                    .AllowCredentials();
+                }
+                else
+                {
+                    policy.WithOrigins("http://localhost:3000")
+                          .AllowAnyHeader()
+                          .AllowAnyMethod()
+                          .AllowCredentials();
+                }
             });
         });
 
