@@ -134,6 +134,8 @@ public class OrderEndpoint
                         email = !string.IsNullOrEmpty(order.UserEmail) ? order.UserEmail : "no-email@example.com",
                         phone = !string.IsNullOrEmpty(order.UserPhone) ? order.UserPhone : "N/A"
                     },
+                    cancellationReason = order.CancellationReason,
+                    cancelledAt = order.CancelledAt,
                     createdAt = order.CreatedAt,
                     updatedAt = order.UpdatedAt
                 });
@@ -203,13 +205,15 @@ public class OrderEndpoint
                 appliedDiscountId = order.AppliedDiscountId,
                 promoCodeId = order.PromoCodeId,
                 paymentMethod = order.PaymentMethod,
-                firstName = order.FirstName,
-                lastName = order.LastName,
-                userName = order.UserName,
-                userEmail = order.UserEmail,
-                userPhone = order.UserPhone,
-                createdAt = order.CreatedAt,
-                updatedAt = order.UpdatedAt
+                    firstName = order.FirstName,
+                    lastName = order.LastName,
+                    userName = order.UserName,
+                    userEmail = order.UserEmail,
+                    userPhone = order.UserPhone,
+                    cancellationReason = order.CancellationReason,
+                    cancelledAt = order.CancelledAt,
+                    createdAt = order.CreatedAt,
+                    updatedAt = order.UpdatedAt
             });
         }); // No RequireAuthorization - public endpoint for success page
         
@@ -275,6 +279,8 @@ public class OrderEndpoint
                         email = !string.IsNullOrEmpty(order.UserEmail) ? order.UserEmail : "no-email@example.com",
                         phone = !string.IsNullOrEmpty(order.UserPhone) ? order.UserPhone : "N/A"
                     },
+                    cancellationReason = order.CancellationReason,
+                    cancelledAt = order.CancelledAt,
                     createdAt = order.CreatedAt,
                     updatedAt = order.UpdatedAt
                 });
@@ -292,13 +298,34 @@ public class OrderEndpoint
             return success ? Results.Ok() : Results.NotFound();
         }).RequireAuthorization();
         
-        group.MapPost("/cancel", async (string id, OrderDbService db) =>
+        group.MapPost("/cancel", async (string id, HttpRequest request, OrderDbService db) =>
         {
             if (!ObjectId.TryParse(id, out var objectId))
-                return Results.BadRequest("Invalid order ID");
-                
-            var success = await db.CancelOrderAsync(objectId);
-            return success ? Results.Ok() : Results.NotFound();
+                return Results.BadRequest(new { message = "Invalid order ID" });
+            
+            // Read cancellation reason from request body
+            var cancelRequest = await request.ReadFromJsonAsync<CancelOrderRequest>();
+            var reason = cancelRequest?.Reason?.Trim();
+            
+            if (string.IsNullOrWhiteSpace(reason))
+                return Results.BadRequest(new { message = "Cancellation reason is required" });
+            
+            if (reason.Length < 10)
+                return Results.BadRequest(new { message = "Cancellation reason must be at least 10 characters" });
+            
+            // Check if order exists and get its status
+            var order = await db.GetOrderByIdAsync(objectId);
+            if (order == null)
+                return Results.NotFound(new { message = "Order not found" });
+            
+            if (order.Status != EOrderStatus.Pending)
+                return Results.BadRequest(new { message = "Only pending orders can be cancelled" });
+            
+            var success = await db.CancelOrderAsync(objectId, reason);
+            if (!success)
+                return Results.BadRequest(new { message = "Failed to cancel order" });
+            
+            return Results.Ok(new { message = "Order cancelled successfully" });
         }).RequireAuthorization();
         
         group.MapGet("/getStatistics", async (OrderDbService db) =>
@@ -353,4 +380,9 @@ public class OrderEndpoint
 public class DeleteManyRequest
 {
     public List<string> Ids { get; set; } = new();
+}
+
+public class CancelOrderRequest
+{
+    public string? Reason { get; set; }
 }

@@ -159,7 +159,28 @@ public class OrderDbService(IMongoCollection<OrderModel> orderDb, ILogger<OrderD
 
     public async Task<bool> CancelOrderAsync(ObjectId id)
     {
-        return await UpdateOrderStatusAsync(id, EOrderStatus.Cancelled);
+        return await CancelOrderAsync(id, null);
+    }
+    
+    public async Task<bool> CancelOrderAsync(ObjectId id, string? reason)
+    {
+        var order = await GetOrderByIdAsync(id);
+        if (order == null)
+            return false;
+        
+        // Only allow cancellation if order is pending
+        if (order.Status != EOrderStatus.Pending)
+            return false;
+        
+        var update = Builders<OrderModel>.Update
+            .Set(o => o.Status, EOrderStatus.Cancelled)
+            .Set(o => o.CancellationReason, reason)
+            .Set(o => o.CancelledAt, DateTime.UtcNow)
+            .Set(o => o.UpdatedAt, DateTime.UtcNow);
+        
+        var filter = Builders<OrderModel>.Filter.Eq(o => o.Id, id);
+        var result = await orderDb.UpdateOneAsync(filter, update);
+        return result.ModifiedCount > 0;
     }
     
     public async Task<List<(DateTime StartDate, DateTime EndDate)>> GetBookedTimeFramesAsync(ObjectId productId)

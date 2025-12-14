@@ -43,6 +43,9 @@ public class OrderModel
     public string UserEmail { get; set; } = string.Empty;
     public string UserPhone { get; set; } = string.Empty;
     
+    public string? CancellationReason { get; set; }
+    public DateTime? CancelledAt { get; set; }
+    
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
