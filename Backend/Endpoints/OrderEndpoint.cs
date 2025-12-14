@@ -154,13 +154,62 @@ public class OrderEndpoint
             if (order is null)
                 return Results.NotFound();
             
-            // Enrich with product details
             var product = await productDb.GetProductByIdAsync(order.ProductId);
-            
+
+            // Enrich additional products (for success page rendering)
+            var enrichedAdditionalProducts = new List<object>();
+            foreach (var ap in order.AdditionalProducts)
+            {
+                var additionalProduct = await productDb.GetProductByIdAsync(ap.ProductId);
+                enrichedAdditionalProducts.Add(new
+                {
+                    productId = ap.ProductId.ToString(),
+                    quantity = ap.Quantity,
+                    pricePerUnit = ap.PricePerUnit,
+                    product = additionalProduct != null ? new
+                    {
+                        id = additionalProduct.Id.ToString(),
+                        name = additionalProduct.Name,
+                        imageName = additionalProduct.ImageName,
+                        basePrice = additionalProduct.BasePrice
+                    } : null
+                });
+            }
+
+            // Return an enriched object (same shape as /getAll for a single order)
             return Results.Ok(new
             {
-                order = order,
-                product = product
+                id = order.Id.ToString(),
+                orderNumber = order.OrderNumber,
+                userId = order.UserId,
+                productId = order.ProductId.ToString(),
+                product = product != null ? new
+                {
+                    id = product.Id.ToString(),
+                    name = product.Name,
+                    imageName = product.ImageName,
+                    basePrice = product.BasePrice,
+                    description = product.Description
+                } : null,
+                additionalProducts = enrichedAdditionalProducts,
+                startDate = order.StartDate,
+                endDate = order.EndDate,
+                durationHours = order.DurationHours,
+                deliveryOption = order.DeliveryOption,
+                deliveryAddress = order.DeliveryAddress,
+                status = order.Status,
+                totalPrice = order.TotalPrice,
+                originalPrice = order.OriginalPrice,
+                appliedDiscountId = order.AppliedDiscountId,
+                promoCodeId = order.PromoCodeId,
+                paymentMethod = order.PaymentMethod,
+                firstName = order.FirstName,
+                lastName = order.LastName,
+                userName = order.UserName,
+                userEmail = order.UserEmail,
+                userPhone = order.UserPhone,
+                createdAt = order.CreatedAt,
+                updatedAt = order.UpdatedAt
             });
         }); // No RequireAuthorization - public endpoint for success page
         
