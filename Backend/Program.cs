@@ -87,6 +87,7 @@ internal class Program
         builder.Services.AddMemoryCache();
         builder.Services.AddLogging();
         builder.Services.AddAntiforgery();
+        builder.Services.AddHttpClient();  // Required for Google OAuth
         
         // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
         if (builder.Services is null)
@@ -106,6 +107,7 @@ internal class Program
 
         builder.Services.AddSingleton<OrderDbService>();
         builder.Services.AddSingleton<MigrationService>();
+        builder.Services.AddSingleton<GoogleAuthService>();  // Google OAuth service
 
         var app = builder.Build();
 

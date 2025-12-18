@@ -356,4 +356,122 @@ public class UserDbService(
         }
     }
 
+    /// <summary>
+    /// Finds a user by their Google ID
+    /// </summary>
+    /// <param name="googleId">Google's unique user ID</param>
+    /// <returns>User or null</returns>
+    public async Task<UserModel?> TryGetUserByGoogleIdAsync(string googleId)
+    {
+        try
+        {
+            var filter = Builders<UserModel>.Filter.Eq(x => x.GoogleId, googleId);
+            var user = await (await userCollection.FindAsync(filter)).FirstOrDefaultAsync();
+            return user;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Creates a new user from Google OAuth
+    /// </summary>
+    public async Task<(bool IsSuccess, string Reason, UserModel? User)> CreateGoogleUserAsync(
+        string googleId,
+        string email,
+        string firstName,
+        string lastName,
+        string? profilePictureUrl,
+        bool emailVerified)
+    {
+        using var session = await mongoClient.StartSessionAsync();
+
+        try
+        {
+            UserModel? createdUser = null;
+            
+            await session.WithTransactionAsync(async (handle, token) =>
+            {
+                var userIdFilter = Builders<DataStoreModel>.Filter.Eq(x => x.DataStoreType, EDataStore.HighestUserId);
+                var userIdUpdate = Builders<DataStoreModel>.Update.Inc(x => x.Value, 1);
+                var userId = await dataStore.FindOneAndUpdateAsync(handle, userIdFilter, userIdUpdate,
+                    new FindOneAndUpdateOptions<DataStoreModel>() { IsUpsert = true }, token);
+
+                var newUser = new UserModel
+                {
+                    UserId = userId?.Value ?? 0,
+                    EUserType = userId == null ? EUserType.SysAdmin : EUserType.User,
+                    RolesIds = userId == null ? [0] : [],
+                    EmailVerified = emailVerified,
+                    Email = email,
+                    PasswordHash = null,  // No password for OAuth users
+                    PasswordSalt = null,
+                    FirstName = firstName,
+                    LastName = lastName,
+                    AddressData = [],
+                    Phone = string.Empty,
+                    GoogleId = googleId,
+                    ProfilePictureUrl = profilePictureUrl,
+                    AuthProvider = "google",
+                    UserMetrics = new UserMetrics
+                    {
+                        RegisteredAt = DateTime.UtcNow,
+                        LastLogin = DateTime.UtcNow,
+                        LastActivity = DateTime.UtcNow,
+                        LastUpdate = DateTime.UtcNow
+                    }
+                };
+
+                // Check if email already exists
+                var filter = Builders<UserModel>.Filter.Eq(x => x.Email, email);
+                var existingCount = await userCollection.CountDocumentsAsync(handle, filter, cancellationToken: token);
+                if (existingCount != 0)
+                    throw new InvalidOperationException($"A user with the email '{email}' already exists.");
+
+                await userCollection.InsertOneAsync(handle, newUser, cancellationToken: token);
+                logger.LogInformation("Created new Google user. UserId: {userId} email {email}.", newUser.UserId, newUser.Email);
+                createdUser = newUser;
+                return Task.CompletedTask;
+            });
+
+            return (true, "Success", createdUser);
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogInformation("Tried to create Google user with already existing email: {email}", email);
+            return (false, ex.Message, null);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError("Failed to create Google user: {ex}", ex);
+            return (false, "Failed to create user.", null);
+        }
+    }
+
+    /// <summary>
+    /// Links a Google account to an existing user
+    /// </summary>
+    public async Task<bool> LinkGoogleAccountAsync(long userId, string googleId, string? profilePictureUrl)
+    {
+        try
+        {
+            var filter = Builders<UserModel>.Filter.Eq(x => x.UserId, userId);
+            var update = Builders<UserModel>.Update
+                .Set(x => x.GoogleId, googleId)
+                .Set(x => x.ProfilePictureUrl, profilePictureUrl)
+                .Set(x => x.UserMetrics.LastUpdate, DateTime.UtcNow);
+
+            var result = await userCollection.UpdateOneAsync(filter, update);
+            logger.LogInformation("Linked Google account to user {UserId}", userId);
+            return result.ModifiedCount > 0;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to link Google account to user {UserId}", userId);
+            return false;
+        }
+    }
+
 }

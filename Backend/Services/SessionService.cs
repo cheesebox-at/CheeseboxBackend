@@ -34,6 +34,13 @@ public class SessionService(
         {
             var user = await userDbService.GetUserAsync(loginDto.Email);
             
+            // Check if user has a password (OAuth users don't)
+            if (string.IsNullOrEmpty(user.PasswordHash) || string.IsNullOrEmpty(user.PasswordSalt))
+            {
+                // User registered via OAuth, cannot login with password
+                return false;
+            }
+            
             var dbPassHash = user.PasswordHash;
             var passHash = HashPassword(loginDto.Password, Convert.FromBase64String(user.PasswordSalt));
         

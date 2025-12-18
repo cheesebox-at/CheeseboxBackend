@@ -42,6 +42,7 @@ public class UserService(UserDbService userDbService, SessionService sessionServ
             FirstName = dto.FirstName,
             LastName = dto.LastName,
             AddressData = (dto.AddressData ?? [])!, // Suppress warning because the code actually works, the warning is wrong.
+            AuthProvider = "local",  // Mark as local registration
             UserMetrics = new UserMetrics
             {
                 RegisteredAt = DateTime.UtcNow,
