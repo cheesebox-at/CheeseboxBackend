@@ -69,12 +69,15 @@ public class MigrationService(
             {
                 try
                 {
+                    var imageName = ExtractImageName(productElement.GetProperty("image").GetString() ?? "");
                     var product = new ProductModel
                     {
                         Type = EProductTypes.Rentable,
                         Name = productElement.GetProperty("name").GetString() ?? "",
                         Description = productElement.TryGetProperty("description", out var desc) ? desc.GetString() ?? "" : "",
-                        ImageName = ExtractImageName(productElement.GetProperty("image").GetString() ?? ""),
+                        ImageName = imageName, // Legacy support
+                        ImageNames = !string.IsNullOrEmpty(imageName) ? new[] { imageName } : Array.Empty<string>(),
+                        MainImageIndex = 0,
                         Features = productElement.TryGetProperty("features", out var features)
                             ? features.EnumerateArray().Select(f => f.GetString() ?? "").ToArray()
                             : Array.Empty<string>(),
@@ -105,12 +108,15 @@ public class MigrationService(
             {
                 try
                 {
+                    var imageName = ExtractImageName(productElement.GetProperty("image").GetString() ?? "");
                     var product = new ProductModel
                     {
                         Type = EProductTypes.PurchasableAddon,
                         Name = productElement.GetProperty("name").GetString() ?? "",
                         Description = productElement.TryGetProperty("description", out var desc) ? desc.GetString() ?? "" : "",
-                        ImageName = ExtractImageName(productElement.GetProperty("image").GetString() ?? ""),
+                        ImageName = imageName, // Legacy support
+                        ImageNames = !string.IsNullOrEmpty(imageName) ? new[] { imageName } : Array.Empty<string>(),
+                        MainImageIndex = 0,
                         Features = Array.Empty<string>(),
                         BasePrice = productElement.GetProperty("price").GetSingle(),
                         PricePerHour = 0,

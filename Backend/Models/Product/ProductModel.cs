@@ -15,7 +15,16 @@ public class ProductModel
     public required EProductTypes Type { get; set; }
     public required string Name { get; set; }
     public string Description { get; set; } = string.Empty;
-    public required string ImageName { get; set; }
+    
+    // Legacy support: Keep ImageName for backward compatibility (optional)
+    public string? ImageName { get; set; }
+    
+    // New: Multiple images support
+    public string[] ImageNames { get; set; } = [];
+    
+    // Index of the main image (for product cards). Defaults to 0 (first image)
+    public int MainImageIndex { get; set; } = 0;
+    
     public string[] Features { get; set; } = [];
     public float BasePrice { get; set; }
     public float PricePerHour { get; set; }
