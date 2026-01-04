@@ -34,13 +34,22 @@ public class UserService(UserDbService userDbService, SessionService sessionServ
         var result = await userDbService.CreateNewUserAsync(new UserModel
         {
             EUserType = EUserType.User,
+            Phone = dto.Phone,
             EmailVerified = false,
             Email = dto.Email.Trim(),
             PasswordHash = passHash,
             PasswordSalt = Convert.ToBase64String(salt),
             FirstName = dto.FirstName,
             LastName = dto.LastName,
-            AddressData = (dto.AddressData ?? [])! // Suppress warning because the code actually works, the warning is wrong.
+            AddressData = (dto.AddressData ?? [])!, // Suppress warning because the code actually works, the warning is wrong.
+            AuthProvider = "local",  // Mark as local registration
+            UserMetrics = new UserMetrics
+            {
+                RegisteredAt = DateTime.UtcNow,
+                LastLogin = DateTime.UtcNow,
+                LastActivity = DateTime.UtcNow,
+                LastUpdate = DateTime.UtcNow
+            }
         });
 
         return (result.IsSuccess, result.Reason);

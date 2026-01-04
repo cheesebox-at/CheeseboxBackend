@@ -41,7 +41,7 @@ public class UserDbService(
 
                     try
                     {
-                        var sysAdminRole = roleDbService.GetRoleByIdAsync(0);
+                        var sysAdminRole = await roleDbService.GetRoleByIdAsync(0);
                     }
                     catch (InvalidOperationException ex)
                     {
@@ -121,6 +121,357 @@ public class UserDbService(
 
         return user;
     }
-    
+
+    /// <summary>
+    /// Gets all users from the database
+    /// </summary>
+    /// <param name="skip">Number of records to skip (for pagination)</param>
+    /// <param name="limit">Maximum number of records to return</param>
+    /// <returns>List of users</returns>
+    public async Task<List<UserModel>> GetAllUsersAsync(int skip = 0, int limit = 100)
+    {
+        var filter = Builders<UserModel>.Filter.Empty;
+        var options = new FindOptions<UserModel>
+        {
+            Skip = skip,
+            Limit = limit,
+            Sort = Builders<UserModel>.Sort.Descending(x => x.UserId)
+        };
+        
+        var users = await (await userCollection.FindAsync(filter, options)).ToListAsync();
+        return users;
+    }
+
+    /// <summary>
+    /// Gets the total count of users
+    /// </summary>
+    /// <returns>Total number of users</returns>
+    public async Task<long> GetUserCountAsync()
+    {
+        return await userCollection.CountDocumentsAsync(Builders<UserModel>.Filter.Empty);
+    }
+
+    /// <summary>
+    /// Tries to get a user by email, returns null if not found
+    /// </summary>
+    /// <param name="email"></param>
+    /// <returns>User or null</returns>
+    public async Task<UserModel?> TryGetUserByEmailAsync(string email)
+    {
+        try
+        {
+            var filter = Builders<UserModel>.Filter.Eq(x => x.Email, email);
+            var user = await (await userCollection.FindAsync(filter)).FirstOrDefaultAsync();
+            return user;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Tries to get a user by ID, returns null if not found
+    /// </summary>
+    /// <param name="userId"></param>
+    /// <returns>User or null</returns>
+    public async Task<UserModel?> TryGetUserByIdAsync(long userId)
+    {
+        try
+        {
+            var filter = Builders<UserModel>.Filter.Eq(x => x.UserId, userId);
+            var user = await (await userCollection.FindAsync(filter)).FirstOrDefaultAsync();
+            return user;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Search users by name or email
+    /// </summary>
+    /// <param name="searchQuery">Search query</param>
+    /// <param name="skip">Number of records to skip</param>
+    /// <param name="limit">Maximum number of records</param>
+    /// <returns>List of matching users</returns>
+    public async Task<List<UserModel>> SearchUsersAsync(string searchQuery, int skip = 0, int limit = 100)
+    {
+        var filter = Builders<UserModel>.Filter.Or(
+            Builders<UserModel>.Filter.Regex(x => x.Email, new MongoDB.Bson.BsonRegularExpression(searchQuery, "i")),
+            Builders<UserModel>.Filter.Regex(x => x.FirstName, new MongoDB.Bson.BsonRegularExpression(searchQuery, "i")),
+            Builders<UserModel>.Filter.Regex(x => x.LastName, new MongoDB.Bson.BsonRegularExpression(searchQuery, "i"))
+        );
+        
+        var options = new FindOptions<UserModel>
+        {
+            Skip = skip,
+            Limit = limit,
+            Sort = Builders<UserModel>.Sort.Descending(x => x.UserId)
+        };
+        
+        var users = await (await userCollection.FindAsync(filter, options)).ToListAsync();
+        return users;
+    }
+
+    /// <summary>
+    /// Updates the user's last login timestamp
+    /// </summary>
+    /// <param name="userId">User ID</param>
+    /// <returns>True if update successful</returns>
+    public async Task<bool> UpdateLastLoginAsync(long userId)
+    {
+        try
+        {
+            var filter = Builders<UserModel>.Filter.Eq(x => x.UserId, userId);
+            var update = Builders<UserModel>.Update
+                .Set(x => x.UserMetrics.LastLogin, DateTime.UtcNow)
+                .Set(x => x.UserMetrics.LastActivity, DateTime.UtcNow);
+            
+            var result = await userCollection.UpdateOneAsync(filter, update);
+            return result.ModifiedCount > 0;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to update last login for user {UserId}", userId);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Updates user profile data
+    /// </summary>
+    /// <param name="userId">User ID</param>
+    /// <param name="firstName">First name</param>
+    /// <param name="lastName">Last name</param>
+    /// <param name="phone">Phone number</param>
+    /// <param name="street">Street</param>
+    /// <param name="houseNumber">House number</param>
+    /// <param name="postalCode">Postal code</param>
+    /// <param name="city">City</param>
+    /// <returns>True if update successful</returns>
+    public async Task<bool> UpdateUserProfileAsync(
+        long userId, 
+        string? firstName, 
+        string? lastName, 
+        string? phone,
+        string? street,
+        string? houseNumber,
+        string? postalCode,
+        string? city)
+    {
+        try
+        {
+            var filter = Builders<UserModel>.Filter.Eq(x => x.UserId, userId);
+            var updateDefinitions = new List<UpdateDefinition<UserModel>>();
+
+            if (firstName != null)
+                updateDefinitions.Add(Builders<UserModel>.Update.Set(x => x.FirstName, firstName));
+            if (lastName != null)
+                updateDefinitions.Add(Builders<UserModel>.Update.Set(x => x.LastName, lastName));
+            if (phone != null)
+                updateDefinitions.Add(Builders<UserModel>.Update.Set(x => x.Phone, phone));
+            
+            // Update metrics
+            updateDefinitions.Add(Builders<UserModel>.Update.Set(x => x.UserMetrics.LastUpdate, DateTime.UtcNow));
+            updateDefinitions.Add(Builders<UserModel>.Update.Set(x => x.UserMetrics.LastActivity, DateTime.UtcNow));
+
+            // Handle address data - create or update primary address
+            if (street != null || houseNumber != null || postalCode != null || city != null)
+            {
+                var user = await TryGetUserByIdAsync(userId);
+                if (user != null)
+                {
+                    var addresses = user.AddressData?.ToList() ?? new List<AddressModel>();
+                    
+                    if (addresses.Count > 0)
+                    {
+                        // Update first address
+                        if (street != null) addresses[0].Street = street + (houseNumber != null ? " " + houseNumber : "");
+                        if (postalCode != null) addresses[0].ZipCode = postalCode;
+                        if (city != null) addresses[0].City = city;
+                    }
+                    else
+                    {
+                        // Create new address
+                        addresses.Add(new AddressModel
+                        {
+                            FirstName = firstName ?? user.FirstName,
+                            LastName = lastName ?? user.LastName,
+                            Street = (street ?? "") + (houseNumber != null ? " " + houseNumber : ""),
+                            ZipCode = postalCode ?? "",
+                            City = city ?? "",
+                            State = "",
+                            Country = "Austria"
+                        });
+                    }
+                    
+                    updateDefinitions.Add(Builders<UserModel>.Update.Set(x => x.AddressData, addresses.ToArray()));
+                }
+            }
+
+            if (updateDefinitions.Count == 0)
+                return true;
+
+            var update = Builders<UserModel>.Update.Combine(updateDefinitions);
+            var result = await userCollection.UpdateOneAsync(filter, update);
+            
+            logger.LogInformation("Updated user profile for user {UserId}", userId);
+            return result.ModifiedCount > 0 || result.MatchedCount > 0;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to update profile for user {UserId}", userId);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Updates user password
+    /// </summary>
+    /// <param name="userId">User ID</param>
+    /// <param name="newPasswordHash">New password hash</param>
+    /// <param name="newPasswordSalt">New password salt</param>
+    /// <returns>True if update successful</returns>
+    public async Task<bool> UpdatePasswordAsync(long userId, string newPasswordHash, string newPasswordSalt)
+    {
+        try
+        {
+            var filter = Builders<UserModel>.Filter.Eq(x => x.UserId, userId);
+            var update = Builders<UserModel>.Update
+                .Set(x => x.PasswordHash, newPasswordHash)
+                .Set(x => x.PasswordSalt, newPasswordSalt)
+                .Set(x => x.UserMetrics.LastUpdate, DateTime.UtcNow)
+                .Set(x => x.UserMetrics.LastActivity, DateTime.UtcNow);
+            
+            var result = await userCollection.UpdateOneAsync(filter, update);
+            logger.LogInformation("Updated password for user {UserId}", userId);
+            return result.ModifiedCount > 0;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to update password for user {UserId}", userId);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Finds a user by their Google ID
+    /// </summary>
+    /// <param name="googleId">Google's unique user ID</param>
+    /// <returns>User or null</returns>
+    public async Task<UserModel?> TryGetUserByGoogleIdAsync(string googleId)
+    {
+        try
+        {
+            var filter = Builders<UserModel>.Filter.Eq(x => x.GoogleId, googleId);
+            var user = await (await userCollection.FindAsync(filter)).FirstOrDefaultAsync();
+            return user;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Creates a new user from Google OAuth
+    /// </summary>
+    public async Task<(bool IsSuccess, string Reason, UserModel? User)> CreateGoogleUserAsync(
+        string googleId,
+        string email,
+        string firstName,
+        string lastName,
+        string? profilePictureUrl,
+        bool emailVerified)
+    {
+        using var session = await mongoClient.StartSessionAsync();
+
+        try
+        {
+            UserModel? createdUser = null;
+            
+            await session.WithTransactionAsync(async (handle, token) =>
+            {
+                var userIdFilter = Builders<DataStoreModel>.Filter.Eq(x => x.DataStoreType, EDataStore.HighestUserId);
+                var userIdUpdate = Builders<DataStoreModel>.Update.Inc(x => x.Value, 1);
+                var userId = await dataStore.FindOneAndUpdateAsync(handle, userIdFilter, userIdUpdate,
+                    new FindOneAndUpdateOptions<DataStoreModel>() { IsUpsert = true }, token);
+
+                var newUser = new UserModel
+                {
+                    UserId = userId?.Value ?? 0,
+                    EUserType = userId == null ? EUserType.SysAdmin : EUserType.User,
+                    RolesIds = userId == null ? [0] : [],
+                    EmailVerified = emailVerified,
+                    Email = email,
+                    PasswordHash = null,  // No password for OAuth users
+                    PasswordSalt = null,
+                    FirstName = firstName,
+                    LastName = lastName,
+                    AddressData = [],
+                    Phone = string.Empty,
+                    GoogleId = googleId,
+                    ProfilePictureUrl = profilePictureUrl,
+                    AuthProvider = "google",
+                    UserMetrics = new UserMetrics
+                    {
+                        RegisteredAt = DateTime.UtcNow,
+                        LastLogin = DateTime.UtcNow,
+                        LastActivity = DateTime.UtcNow,
+                        LastUpdate = DateTime.UtcNow
+                    }
+                };
+
+                // Check if email already exists
+                var filter = Builders<UserModel>.Filter.Eq(x => x.Email, email);
+                var existingCount = await userCollection.CountDocumentsAsync(handle, filter, cancellationToken: token);
+                if (existingCount != 0)
+                    throw new InvalidOperationException($"A user with the email '{email}' already exists.");
+
+                await userCollection.InsertOneAsync(handle, newUser, cancellationToken: token);
+                logger.LogInformation("Created new Google user. UserId: {userId} email {email}.", newUser.UserId, newUser.Email);
+                createdUser = newUser;
+                return Task.CompletedTask;
+            });
+
+            return (true, "Success", createdUser);
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogInformation("Tried to create Google user with already existing email: {email}", email);
+            return (false, ex.Message, null);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError("Failed to create Google user: {ex}", ex);
+            return (false, "Failed to create user.", null);
+        }
+    }
+
+    /// <summary>
+    /// Links a Google account to an existing user
+    /// </summary>
+    public async Task<bool> LinkGoogleAccountAsync(long userId, string googleId, string? profilePictureUrl)
+    {
+        try
+        {
+            var filter = Builders<UserModel>.Filter.Eq(x => x.UserId, userId);
+            var update = Builders<UserModel>.Update
+                .Set(x => x.GoogleId, googleId)
+                .Set(x => x.ProfilePictureUrl, profilePictureUrl)
+                .Set(x => x.UserMetrics.LastUpdate, DateTime.UtcNow);
+
+            var result = await userCollection.UpdateOneAsync(filter, update);
+            logger.LogInformation("Linked Google account to user {UserId}", userId);
+            return result.ModifiedCount > 0;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to link Google account to user {UserId}", userId);
+            return false;
+        }
+    }
 
 }

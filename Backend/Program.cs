@@ -9,9 +9,11 @@ using Backend.Models.User;
 using Backend.Services;
 using Backend.Services.MongoServices;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using MongoDB.Driver;
+using Backend.Models.Order;
 
 namespace Backend;
 
@@ -51,10 +53,41 @@ internal class Program
             
         //Authorization verifies if they have access permission to what they want to access
         builder.Services.AddAuthorization();
+        
+        // CORS configuration for frontend
+        builder.Services.AddCors(options =>
+        {
+            options.AddDefaultPolicy(policy =>
+            {
+                // In development, allow requests from localhost and local network IPs
+                if (builder.Environment.IsDevelopment())
+                {
+                    policy.SetIsOriginAllowed(origin =>
+                    {
+                        // Allow localhost and any IP address on port 3000
+                        return origin.StartsWith("http://0.0.0.0:3000") ||
+                               origin.StartsWith("http://localhost:3000") ||
+                               (origin.StartsWith("http://") && origin.EndsWith(":3000") && 
+                                System.Net.IPAddress.TryParse(origin.Replace("http://", "").Replace(":3000", ""), out _));
+                    })
+                    .AllowAnyHeader()
+                    .AllowAnyMethod()
+                    .AllowCredentials();
+                }
+                else
+                {
+                    policy.WithOrigins("http://localhost:3000")
+                          .AllowAnyHeader()
+                          .AllowAnyMethod()
+                          .AllowCredentials();
+                }
+            });
+        });
 
         builder.Services.AddMemoryCache();
         builder.Services.AddLogging();
         builder.Services.AddAntiforgery();
+        builder.Services.AddHttpClient();  // Required for Google OAuth
         
         // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
         if (builder.Services is null)
@@ -72,12 +105,29 @@ internal class Program
         builder.Services.AddSingleton<SessionService>();
         builder.Services.AddSingleton<UserService>();
 
+        builder.Services.AddSingleton<OrderDbService>();
+        builder.Services.AddSingleton<MigrationService>();
+        builder.Services.AddSingleton<GoogleAuthService>();  // Google OAuth service
+
         var app = builder.Build();
 
         // Middleware
         app.UseHttpsRedirection();
+        
+        // Serve static files from the "assets" folder (e.g., /assets/products/...)
+        var assetsPath = Path.Combine(app.Environment.ContentRootPath, "assets");
+        if (Directory.Exists(assetsPath))
+        {
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = new PhysicalFileProvider(assetsPath),
+                RequestPath = "/assets"
+            });
+        }
+        
+        app.UseCors();
 
-        //populates jwt(auth) cookie into auth header so that it can be used by other auth middleware
+        // populates jwt(auth) cookie into auth header so that it can be used by other auth middleware
         app.UseMiddleware<JwtFromCookieMiddleware>();
 
         app.UseAuthentication();
@@ -93,6 +143,9 @@ internal class Program
         new ProductEndpoint().Register(apiGroup);
         new SessionEndpoint().Register(apiGroup);
         new RoleEndpoint().Register(apiGroup);
+        new OrderEndpoint().Register(apiGroup);
+        new ImageEndpoint().Register(apiGroup);
+        new UserEndpoint().Register(apiGroup);
 
         app.Run();
     }
@@ -115,24 +168,33 @@ internal class Program
             return client.GetDatabase(config.DatabaseName);
         });
 
+        // Products collection
         RegisterCollectionService<ProductModel>(
             dbCollectionName: "Products");
 
+        // Sessions collection with indexes
         RegisterCollectionService<SessionModel>(
             dbCollectionName: "Sessions",
             additionalIndexes: ["UserId", "RefreshToken"],
             // expireAfterTouple: (TimeSpan.FromDays(builder.Configuration.GetSection("Session").GetValue<int>("ExpireAfterDays")), nameof(SessionModel.ExpireAfter)));
             expireAfterTouple: (TimeSpan.FromSeconds(1), nameof(SessionModel.ExpireAt)));
         
+        // Users collection with unique Email index
         RegisterCollectionService<UserModel>(
             dbCollectionName: "Users", 
             uniqueIndexName: "Email");
 
+        // Roles collection
         RegisterCollectionService<RoleModel>(
             dbCollectionName: "Roles");
         
+        // DataStore collection
         RegisterCollectionService<DataStoreModel>(
             dbCollectionName: "DataStore");
+
+        // Orders collection
+        RegisterCollectionService<OrderModel>(
+            dbCollectionName: "Orders");
     }
 
     private static void RegisterCollectionService<T>(string dbCollectionName, string? uniqueIndexName = null, string[]? additionalIndexes = null,  (TimeSpan ExpireAfter, string ExpireIndexName)? expireAfterTouple = null)

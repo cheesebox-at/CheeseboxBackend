@@ -1,0 +1,388 @@
+using Backend.Enums;
+using Backend.Models.Order;
+using Backend.Services.MongoServices;
+using Microsoft.AspNetCore.Authorization;
+using MongoDB.Bson;
+
+namespace Backend.Endpoints;
+
+public class OrderEndpoint
+{
+    public void Register(RouteGroupBuilder app)
+    {
+        var group = app.MapGroup("/order");
+        
+        group.MapPost("/create", async (OrderModel order, OrderDbService orderDb, ProductDbService productDb) =>
+        {
+            // Validate product exists and is published
+            var product = await productDb.GetProductByIdAsync(order.ProductId);
+            if (product == null)
+                return Results.BadRequest("Product not found");
+            
+            if (!product.IsPublished)
+                return Results.BadRequest("Product is not published");
+            
+            // Check availability
+            var isAvailable = await orderDb.CheckProductAvailabilityAsync(order.ProductId, order.StartDate, order.EndDate);
+            if (!isAvailable)
+                return Results.BadRequest("Product is not available for the selected time frame");
+            
+            // Check stock
+            if (product.InStock <= 0)
+                return Results.BadRequest("Product is out of stock");
+            
+            var result = await orderDb.CreateOrderAsync(order);
+            
+            if (result is null)
+                return Results.BadRequest("Failed to create order");
+            
+            // Return extended response with order details
+            return Results.Ok(new
+            {
+                order = result,
+                orderNumber = result.OrderNumber,
+                orderId = result.Id.ToString()
+            });
+        });
+
+        group.MapGet("/getAdditionalAvailability", async (DateTime start, DateTime end, OrderDbService orderDb, ProductDbService productDb) =>
+        {
+            // Get all published products
+            var products = await productDb.GetPublishedProductsAsync();
+            
+            // Get usage of additional products ONLY within the requested time frame
+            var usage = await orderDb.GetAdditionalProductsUsageInDateRangeAsync(start, end);
+
+            var additionalProducts = products
+                .Where(p => p.Type == EProductTypes.PurchasableAddon || p.Type == EProductTypes.RentableAddon)
+                .ToList();
+
+            var availability = additionalProducts.Select(p =>
+            {
+                usage.TryGetValue(p.Id, out var orderedQuantity);
+                var available = Math.Max(0, p.InStock - orderedQuantity);
+
+                return new
+                {
+                    productId = p.Id.ToString(),
+                    available
+                };
+            });
+
+            return Results.Ok(availability);
+        }).RequireAuthorization();
+
+        group.MapGet("/getAll", async (OrderDbService db, ProductDbService productDb) =>
+        {
+            var orders = await db.GetAllOrdersAsync();
+            
+            // Enrich orders with product details
+            var enrichedOrders = new List<object>();
+            foreach (var order in orders)
+            {
+                var product = await productDb.GetProductByIdAsync(order.ProductId);
+                
+                // Enrich additional products
+                var enrichedAdditionalProducts = new List<object>();
+                foreach (var ap in order.AdditionalProducts)
+                {
+                    var additionalProduct = await productDb.GetProductByIdAsync(ap.ProductId);
+                    enrichedAdditionalProducts.Add(new
+                    {
+                        productId = ap.ProductId.ToString(),
+                        quantity = ap.Quantity,
+                        pricePerUnit = ap.PricePerUnit,
+                        product = additionalProduct != null ? new
+                        {
+                            id = additionalProduct.Id.ToString(),
+                            name = additionalProduct.Name,
+                            imageName = additionalProduct.ImageName,
+                            basePrice = additionalProduct.BasePrice
+                        } : null
+                    });
+                }
+                
+                enrichedOrders.Add(new
+                {
+                    id = order.Id.ToString(),
+                    orderNumber = order.OrderNumber,
+                    userId = order.UserId,
+                    productId = order.ProductId.ToString(),
+                    product = product != null ? new
+                    {
+                        id = product.Id.ToString(),
+                        name = product.Name,
+                        imageName = product.ImageName,
+                        basePrice = product.BasePrice,
+                        description = product.Description
+                    } : null,
+                    additionalProducts = enrichedAdditionalProducts,
+                    startDate = order.StartDate,
+                    endDate = order.EndDate,
+                    durationHours = order.DurationHours,
+                    deliveryOption = order.DeliveryOption,
+                    deliveryAddress = order.DeliveryAddress,
+                    status = order.Status,
+                    totalPrice = order.TotalPrice,
+                    originalPrice = order.OriginalPrice,
+                    appliedDiscountId = order.AppliedDiscountId,
+                    promoCodeId = order.PromoCodeId,
+                    paymentMethod = order.PaymentMethod,
+                    user = new
+                    {
+                        name = !string.IsNullOrEmpty(order.UserName) ? order.UserName : "Unknown Customer",
+                        email = !string.IsNullOrEmpty(order.UserEmail) ? order.UserEmail : "no-email@example.com",
+                        phone = !string.IsNullOrEmpty(order.UserPhone) ? order.UserPhone : "N/A"
+                    },
+                    cancellationReason = order.CancellationReason,
+                    cancelledAt = order.CancelledAt,
+                    createdAt = order.CreatedAt,
+                    updatedAt = order.UpdatedAt
+                });
+            }
+            
+            return Results.Ok(enrichedOrders);
+        }).RequireAuthorization();
+        
+        group.MapGet("/getOne", async (string id, OrderDbService db) =>
+        {
+            var order = await db.GetOrderByIdAsync(id);
+            return order is not null ? Results.Ok(order) : Results.NotFound();
+        }).RequireAuthorization();
+        
+        group.MapGet("/getByOrderNumber/{orderNumber}", async (string orderNumber, OrderDbService db, ProductDbService productDb) =>
+        {
+            var order = await db.GetOrderByOrderNumberAsync(orderNumber);
+            if (order is null)
+                return Results.NotFound();
+            
+            var product = await productDb.GetProductByIdAsync(order.ProductId);
+
+            // Enrich additional products (for success page rendering)
+            var enrichedAdditionalProducts = new List<object>();
+            foreach (var ap in order.AdditionalProducts)
+            {
+                var additionalProduct = await productDb.GetProductByIdAsync(ap.ProductId);
+                enrichedAdditionalProducts.Add(new
+                {
+                    productId = ap.ProductId.ToString(),
+                    quantity = ap.Quantity,
+                    pricePerUnit = ap.PricePerUnit,
+                    product = additionalProduct != null ? new
+                    {
+                        id = additionalProduct.Id.ToString(),
+                        name = additionalProduct.Name,
+                        imageName = additionalProduct.ImageName,
+                        basePrice = additionalProduct.BasePrice
+                    } : null
+                });
+            }
+
+            // Return an enriched object (same shape as /getAll for a single order)
+            return Results.Ok(new
+            {
+                id = order.Id.ToString(),
+                orderNumber = order.OrderNumber,
+                userId = order.UserId,
+                productId = order.ProductId.ToString(),
+                product = product != null ? new
+                {
+                    id = product.Id.ToString(),
+                    name = product.Name,
+                    imageName = product.ImageName,
+                    basePrice = product.BasePrice,
+                    description = product.Description
+                } : null,
+                additionalProducts = enrichedAdditionalProducts,
+                startDate = order.StartDate,
+                endDate = order.EndDate,
+                durationHours = order.DurationHours,
+                deliveryOption = order.DeliveryOption,
+                deliveryAddress = order.DeliveryAddress,
+                status = order.Status,
+                totalPrice = order.TotalPrice,
+                originalPrice = order.OriginalPrice,
+                appliedDiscountId = order.AppliedDiscountId,
+                promoCodeId = order.PromoCodeId,
+                paymentMethod = order.PaymentMethod,
+                    firstName = order.FirstName,
+                    lastName = order.LastName,
+                    userName = order.UserName,
+                    userEmail = order.UserEmail,
+                    userPhone = order.UserPhone,
+                    cancellationReason = order.CancellationReason,
+                    cancelledAt = order.CancelledAt,
+                    createdAt = order.CreatedAt,
+                    updatedAt = order.UpdatedAt
+            });
+        }); // No RequireAuthorization - public endpoint for success page
+        
+        group.MapGet("/getByUser", async (long userId, OrderDbService db, ProductDbService productDb) =>
+        {
+            var orders = await db.GetOrdersByUserIdAsync(userId);
+            
+            // Enrich orders with product details, similar to /getAll
+            var enrichedOrders = new List<object>();
+            foreach (var order in orders)
+            {
+                var product = await productDb.GetProductByIdAsync(order.ProductId);
+
+                // Enrich additional products
+                var enrichedAdditionalProducts = new List<object>();
+                foreach (var ap in order.AdditionalProducts)
+                {
+                    var additionalProduct = await productDb.GetProductByIdAsync(ap.ProductId);
+                    enrichedAdditionalProducts.Add(new
+                    {
+                        productId = ap.ProductId.ToString(),
+                        quantity = ap.Quantity,
+                        pricePerUnit = ap.PricePerUnit,
+                        product = additionalProduct != null ? new
+                        {
+                            id = additionalProduct.Id.ToString(),
+                            name = additionalProduct.Name,
+                            imageName = additionalProduct.ImageName,
+                            basePrice = additionalProduct.BasePrice
+                        } : null
+                    });
+                }
+
+                enrichedOrders.Add(new
+                {
+                    id = order.Id.ToString(),
+                    orderNumber = order.OrderNumber,
+                    userId = order.UserId,
+                    productId = order.ProductId.ToString(),
+                    product = product != null ? new
+                    {
+                        id = product.Id.ToString(),
+                        name = product.Name,
+                        imageName = product.ImageName,
+                        basePrice = product.BasePrice,
+                        description = product.Description
+                    } : null,
+                    additionalProducts = enrichedAdditionalProducts,
+                    startDate = order.StartDate,
+                    endDate = order.EndDate,
+                    durationHours = order.DurationHours,
+                    deliveryOption = order.DeliveryOption,
+                    deliveryAddress = order.DeliveryAddress,
+                    status = order.Status,
+                    totalPrice = order.TotalPrice,
+                    originalPrice = order.OriginalPrice,
+                    appliedDiscountId = order.AppliedDiscountId,
+                    promoCodeId = order.PromoCodeId,
+                    paymentMethod = order.PaymentMethod,
+                    user = new
+                    {
+                        name = !string.IsNullOrEmpty(order.UserName) ? order.UserName : "Unknown Customer",
+                        email = !string.IsNullOrEmpty(order.UserEmail) ? order.UserEmail : "no-email@example.com",
+                        phone = !string.IsNullOrEmpty(order.UserPhone) ? order.UserPhone : "N/A"
+                    },
+                    cancellationReason = order.CancellationReason,
+                    cancelledAt = order.CancelledAt,
+                    createdAt = order.CreatedAt,
+                    updatedAt = order.UpdatedAt
+                });
+            }
+
+            return Results.Ok(enrichedOrders);
+        }).RequireAuthorization();
+        
+        group.MapPut("/updateStatus", async (string id, EOrderStatus status, OrderDbService db) =>
+        {
+            if (!ObjectId.TryParse(id, out var objectId))
+                return Results.BadRequest("Invalid order ID");
+                
+            var success = await db.UpdateOrderStatusAsync(objectId, status);
+            return success ? Results.Ok() : Results.NotFound();
+        }).RequireAuthorization();
+        
+        group.MapPost("/cancel", async (string id, HttpRequest request, OrderDbService db) =>
+        {
+            if (!ObjectId.TryParse(id, out var objectId))
+                return Results.BadRequest(new { message = "Invalid order ID" });
+            
+            // Read cancellation reason from request body
+            var cancelRequest = await request.ReadFromJsonAsync<CancelOrderRequest>();
+            var reason = cancelRequest?.Reason?.Trim();
+            
+            if (string.IsNullOrWhiteSpace(reason))
+                return Results.BadRequest(new { message = "Cancellation reason is required" });
+            
+            if (reason.Length < 10)
+                return Results.BadRequest(new { message = "Cancellation reason must be at least 10 characters" });
+            
+            // Check if order exists and get its status
+            var order = await db.GetOrderByIdAsync(objectId);
+            if (order == null)
+                return Results.NotFound(new { message = "Order not found" });
+            
+            if (order.Status != EOrderStatus.Pending)
+                return Results.BadRequest(new { message = "Only pending orders can be cancelled" });
+            
+            var success = await db.CancelOrderAsync(objectId, reason);
+            if (!success)
+                return Results.BadRequest(new { message = "Failed to cancel order" });
+            
+            return Results.Ok(new { message = "Order cancelled successfully" });
+        }).RequireAuthorization();
+        
+        group.MapGet("/getStatistics", async (OrderDbService db) =>
+        {
+            var orders = await db.GetAllOrdersAsync();
+            
+            var statistics = new
+            {
+                pending = orders.Count(o => o.Status == EOrderStatus.Pending),
+                confirmed = orders.Count(o => o.Status == EOrderStatus.Confirmed),
+                completed = orders.Count(o => o.Status == EOrderStatus.Completed),
+                cancelled = orders.Count(o => o.Status == EOrderStatus.Cancelled),
+                total = orders.Count,
+                totalRevenue = orders.Where(o => o.Status != EOrderStatus.Cancelled).Sum(o => o.TotalPrice),
+                averageOrderValue = orders.Any() ? orders.Where(o => o.Status != EOrderStatus.Cancelled).Average(o => o.TotalPrice) : 0
+            };
+            
+            return Results.Ok(statistics);
+        }).RequireAuthorization();
+
+        group.MapDelete("/delete", async (string id, OrderDbService db) =>
+        {
+            if (!ObjectId.TryParse(id, out var objectId))
+                return Results.BadRequest("Invalid order ID");
+                
+            var success = await db.DeleteOrderAsync(objectId);
+            return success ? Results.Ok(new { message = "Order deleted successfully" }) : Results.NotFound();
+        }).RequireAuthorization();
+
+        group.MapDelete("/deleteMany", async (HttpRequest request, OrderDbService db) =>
+        {
+            var body = await request.ReadFromJsonAsync<DeleteManyRequest>();
+            if (body?.Ids == null || body.Ids.Count == 0)
+                return Results.BadRequest("No order IDs provided");
+
+            var objectIds = new List<ObjectId>();
+            foreach (var id in body.Ids)
+            {
+                if (ObjectId.TryParse(id, out var objectId))
+                    objectIds.Add(objectId);
+            }
+
+            if (objectIds.Count == 0)
+                return Results.BadRequest("No valid order IDs provided");
+
+            var deletedCount = await db.DeleteOrdersAsync(objectIds);
+            return Results.Ok(new { deletedCount, message = $"{deletedCount} order(s) deleted successfully" });
+        }).RequireAuthorization();
+    }
+}
+
+public class DeleteManyRequest
+{
+    public List<string> Ids { get; set; } = new();
+}
+
+public class CancelOrderRequest
+{
+    public string? Reason { get; set; }
+}
